@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.7
+// @version      0.8
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -79,6 +79,10 @@
     'div.bg-img',
     // 直播间下方热门推荐区块(J_hot，占一屏高度)
     '.hot-wrap',
+    // 房间头(主播信息条)与主播自设组件(头条/视频嵌入等)，隐藏后由布局补偿规则把播放器居中
+    '.room-hd-l, #J_roomHeader',
+    '#matchComponent1, #matchComponent3, #matchComponent6, #matchComponent7',
+    '.diy-video-embed',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
     '#sidebarBanner, .sidebar-banner, .sidebar-banner-link',
     '.game-sold-comp',
@@ -86,13 +90,23 @@
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
 
+  // 布局补偿规则：房间头与主播自设组件隐藏后，播放器在「顶部导航以下」的可用空间内垂直居中，
+  // 聊天区拉满剩余高度，避免画面偏上、四周留白
+  var LAYOUT_FIX_RULES = [
+    '.main-room,.room-wrap,.room-core{height:calc(100vh - 60px)!important;}',
+    '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:center!important;}',
+    '.room-player-wrap{flex:0 0 auto!important;}',
+    '.room-core-r{height:100%!important;}'
+  ].join('');
+
   // 背景清除规则：元素自身带背景广告图、但里面装着播放器/正常内容时不能隐藏整块，
   // 改为清掉背景图保留内容。实测 #J_mainRoom 的背景图即主播推广广告(zts.msstatic.com)。
   var BG_CLEAR_RULES = '#J_mainRoom, .main-room, .match-room, .room-wrap' +
     '{background:none !important;background-image:none !important;}';
 
   function darkStyle() {
-    return 'html,body{background:#141416 !important;}';
+    return 'html,body{background:#141416 !important;}' +
+      '.room-core-l,.room-player-wrap,.room-core-r{background:#141416 !important;}';
   }
 
   function isRoomPage() {
@@ -178,14 +192,13 @@
   function viewportLockCss() {
     return [
       'html.hc-locked,html.hc-locked body{overflow:hidden!important;height:100vh!important;}',
-      // 顶部导航隐藏(留在文档流中会挡 fixed 播放器)；房间头保留并固定到顶部(内含切换直播间入口，不能隐)
-      'html.hc-locked .duya-header-wrap{display:none!important;}',
-      'html.hc-locked #J_roomHeader{position:fixed!important;top:0!important;left:0!important;' +
-        'width:100vw!important;z-index:1001!important;background:inherit!important;}',
-      'html.hc-locked #J_playerMain{position:fixed!important;top:var(--hc-hd-h,78px)!important;left:0!important;' +
-        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:calc(100vh - var(--hc-hd-h,78px))!important;z-index:1000!important;}',
-      'html.hc-locked .room-core-r{position:fixed!important;top:var(--hc-hd-h,78px)!important;right:0!important;' +
-        'width:var(--hc-aside-w,340px)!important;height:calc(100vh - var(--hc-hd-h,78px))!important;z-index:1000!important;}'
+      // 顶部导航保留(切直播间等入口)，提升层级确保它在 fixed 播放器之上；
+      // 房间头已由去广告规则默认隐藏，播放器与聊天区直接排在导航下方铺满
+      'html.hc-locked .duya-header-wrap{z-index:1002!important;position:fixed!important;top:0!important;left:0!important;right:0!important;}',
+      'html.hc-locked #J_playerMain{position:fixed!important;top:60px!important;left:0!important;' +
+        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:calc(100vh - 60px)!important;z-index:1000!important;}',
+      'html.hc-locked .room-core-r{position:fixed!important;top:60px!important;right:0!important;' +
+        'width:var(--hc-aside-w,340px)!important;height:calc(100vh - 60px)!important;z-index:1000!important;}'
     ].join('');
   }
 
@@ -213,9 +226,11 @@
     if (currentSettings.removeAd) {
       setStyle('ad', AD_RULES);
       setStyle('bgclear', BG_CLEAR_RULES);
+      setStyle('layoutfix', LAYOUT_FIX_RULES);
     } else {
       removeStyle('ad');
       removeStyle('bgclear');
+      removeStyle('layoutfix');
     }
     if (currentSettings.darkBg) setStyle('dark', darkStyle());
     else removeStyle('dark');
@@ -420,6 +435,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.8', text: '默认隐藏房间头与主播自设组件(matchComponent1/3/6/7、diy-video-embed)，新增布局补偿(隐藏后播放器垂直居中、聊天区拉满，画面不再偏上)；视口锁定保留顶部导航；齿轮恢复旋转(已正放，转起来不显歪)。' },
     { version: '0.7', text: '齿轮图标改静止正放(齿正对上下左右，只保留呼吸光晕，不再旋转到斜角度)；新增隐藏直播间下方热门推荐区块 .hot-wrap。' },
     { version: '0.6', text: '视口锁定修正：房间头(#J_roomHeader)不再隐藏，改为固定到视口顶部(内含切换直播间入口)，播放器与聊天区自动排在它下方；仅隐藏顶部导航。' },
     { version: '0.5', text: '新增「更新说明」版块：⚙ 面板一键查看最近版本更新内容。' },
@@ -543,14 +559,16 @@
     });
 
     // 齿轮按钮
-    // 齿轮静止正放(齿正对上下左右)，只保留呼吸光晕：旋转时齿轮转到斜角度看起来像「歪」
+    // 齿轮旋转 + 正放：path 已旋转 22.5° 让齿正对上下左右，转起来角度正常不再显歪
     setStyle('fab-anim', [
-      '@keyframes huya-clean-fab-pulse{0%,100%{box-shadow:0 0 4px rgba(255,140,0,.35)}50%{box-shadow:0 0 14px rgba(255,140,0,.9)}}'
+      '@keyframes huya-clean-fab-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}',
+      '@keyframes huya-clean-fab-pulse{0%,100%{box-shadow:0 0 4px rgba(255,140,0,.35)}50%{box-shadow:0 0 14px rgba(255,140,0,.9)}}',
+      '#huya-clean-fab:hover{animation-duration:2s,1s !important;}'
     ].join(''));
     var toggle = document.createElement('div');
     toggle.id = 'huya-clean-fab';
     toggle.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block;margin:5px auto"><g transform="rotate(22.5 12 12)"><path fill="#ff8c00" d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94zM12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></g></svg>';
-    toggle.style.cssText = 'position:fixed;top:60px;right:10px;z-index:2147483647;width:28px;height:28px;border-radius:50%;text-align:center;background:rgba(20,20,22,.85);cursor:grab;user-select:none;border:1px solid #ff8c00;animation:huya-clean-fab-pulse 3s ease-in-out infinite;';
+    toggle.style.cssText = 'position:fixed;top:60px;right:10px;z-index:2147483647;width:28px;height:28px;border-radius:50%;text-align:center;background:rgba(20,20,22,.85);cursor:grab;user-select:none;border:1px solid #ff8c00;animation:huya-clean-fab-spin 12s linear infinite,huya-clean-fab-pulse 3s ease-in-out infinite;';
     toggle.title = '虎牙助手设置（可拖动）';
 
     function loadFabPos() {
