@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.6
+// @version      0.7
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -77,6 +77,8 @@
     '#matchComponent2, #J_spbg, .diy-toutu2',
     // 侧栏广告位组件(实测背景图为腾讯 pgdt.gtimg.cn 广告系统素材)
     'div.bg-img',
+    // 直播间下方热门推荐区块(J_hot，占一屏高度)
+    '.hot-wrap',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
     '#sidebarBanner, .sidebar-banner, .sidebar-banner-link',
     '.game-sold-comp',
@@ -418,6 +420,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.7', text: '齿轮图标改静止正放(齿正对上下左右，只保留呼吸光晕，不再旋转到斜角度)；新增隐藏直播间下方热门推荐区块 .hot-wrap。' },
     { version: '0.6', text: '视口锁定修正：房间头(#J_roomHeader)不再隐藏，改为固定到视口顶部(内含切换直播间入口)，播放器与聊天区自动排在它下方；仅隐藏顶部导航。' },
     { version: '0.5', text: '新增「更新说明」版块：⚙ 面板一键查看最近版本更新内容。' },
     { version: '0.4', text: '视口锁定改进：锁定时自动隐藏顶部导航/房间头(挡住 fixed 播放器的三个元素)，播放器与聊天区从视口顶部铺满，纯观看模式，解锁全部恢复。' },
@@ -540,15 +543,14 @@
     });
 
     // 齿轮按钮
+    // 齿轮静止正放(齿正对上下左右)，只保留呼吸光晕：旋转时齿轮转到斜角度看起来像「歪」
     setStyle('fab-anim', [
-      '@keyframes huya-clean-fab-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}',
-      '@keyframes huya-clean-fab-pulse{0%,100%{box-shadow:0 0 4px rgba(255,140,0,.35)}50%{box-shadow:0 0 14px rgba(255,140,0,.9)}}',
-      '#huya-clean-fab:hover{animation-duration:2s,1s !important;}'
+      '@keyframes huya-clean-fab-pulse{0%,100%{box-shadow:0 0 4px rgba(255,140,0,.35)}50%{box-shadow:0 0 14px rgba(255,140,0,.9)}}'
     ].join(''));
     var toggle = document.createElement('div');
     toggle.id = 'huya-clean-fab';
-    toggle.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block;margin:5px auto"><path fill="#ff8c00" d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94zM12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>';
-    toggle.style.cssText = 'position:fixed;top:60px;right:10px;z-index:2147483647;width:28px;height:28px;border-radius:50%;text-align:center;background:rgba(20,20,22,.85);cursor:grab;user-select:none;border:1px solid #ff8c00;animation:huya-clean-fab-spin 12s linear infinite,huya-clean-fab-pulse 3s ease-in-out infinite;';
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block;margin:5px auto"><g transform="rotate(22.5 12 12)"><path fill="#ff8c00" d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94zM12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></g></svg>';
+    toggle.style.cssText = 'position:fixed;top:60px;right:10px;z-index:2147483647;width:28px;height:28px;border-radius:50%;text-align:center;background:rgba(20,20,22,.85);cursor:grab;user-select:none;border:1px solid #ff8c00;animation:huya-clean-fab-pulse 3s ease-in-out infinite;';
     toggle.title = '虎牙助手设置（可拖动）';
 
     function loadFabPos() {
