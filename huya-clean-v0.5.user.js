@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.4
+// @version      0.5
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -405,6 +405,39 @@
     return { start: start, stop: stop };
   }
 
+  // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
+  var CHANGELOG = [
+    { version: '0.4', text: '视口锁定改进：锁定时自动隐藏顶部导航/房间头(挡住 fixed 播放器的三个元素)，播放器与聊天区从视口顶部铺满，纯观看模式，解锁全部恢复。' },
+    { version: '0.3', text: '背景广告图只清图不伤内容：#J_mainRoom 等容器的背景推广图改为清背景保留元素(隐藏整个容器会连播放器一起没)；新增隐藏侧栏腾讯广告位组件；自定义规则支持 bg: 前缀(元素带背景广告但里面有正常内容时用)。' },
+    { version: '0.2', text: '新增隐藏「主播自设背景推广图」(把播放器顶到一屏以下的大图)；移植斗鱼版双保险：布局兜底(默认开，画面被顶出视口自动回收大块广告) + 视口锁定(实验性，播放器+聊天区钉死视口)。' },
+    { version: '0.1', text: '首发：去广告(主播位横幅/侧栏广告/游戏售卖组件) + 🎯拾取元素点选去广告 + 深色背景 + 可拖动齿轮面板。' }
+  ];
+
+  function showChangelog() {
+    var old = document.getElementById('huya-clean-changelog');
+    if (old) { try { old.remove(); } catch (e) { /* 忽略 */ } }
+    var overlay = document.createElement('div');
+    overlay.id = 'huya-clean-changelog';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);' +
+      'display:flex;align-items:center;justify-content:center;';
+    var card = document.createElement('div');
+    card.style.cssText = 'background:rgba(24,24,28,.98);border:1px solid #444;border-radius:10px;' +
+      'padding:14px 18px;max-width:min(540px,88vw);max-height:70vh;overflow:auto;' +
+      'font:12px/1.8 "Microsoft YaHei",sans-serif;color:#ddd;box-shadow:0 8px 32px rgba(0,0,0,.6);';
+    var html = '<div style="font-weight:700;font-size:13px;color:#fff;margin-bottom:8px">更新说明 ' +
+      '<span style="font-weight:400;color:#888;font-size:11px">(点击任意处关闭)</span></div>';
+    for (var i = 0; i < CHANGELOG.length; i++) {
+      html += '<div style="margin-bottom:8px"><span style="color:#ffb454;font-weight:700">v' +
+        CHANGELOG[i].version + '</span> ' + CHANGELOG[i].text + '</div>';
+    }
+    card.innerHTML = html;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    var close = function () { try { overlay.remove(); } catch (e) { /* 忽略 */ } };
+    overlay.addEventListener('click', close);
+    setTimeout(close, 12000); // 12 秒无操作自动关，不挡画面
+  }
+
   // ========== 设置面板 ==========
   var PANEL_ID = 'huya-clean-panel';
   var FAB_POS_KEY = 'huya-clean-fab-pos';
@@ -436,6 +469,7 @@
       '<input type="checkbox" data-key="autoReclaim"' + (currentSettings.autoReclaim ? ' checked' : '') + '>布局兜底(自动回收遮挡画面的大块广告)</label>' +
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
       '<input type="checkbox" data-key="viewportLock"' + (currentSettings.viewportLock ? ' checked' : '') + '>视口锁定(播放器+聊天区钉死视口，实验性)</label>' +
+      '<div id="huya-clean-changelog-btn" title="查看最近版本更新说明" style="margin-top:4px;padding:3px 8px;text-align:center;cursor:pointer;background:#5a4a1a;color:#ffd;border-radius:6px;user-select:none">更新说明</div>' +
       '<div style="margin-top:6px;border-top:1px solid #333;padding-top:5px">' +
       '<div style="font-size:11px;color:#aaa;line-height:1.7;margin-bottom:4px;max-width:270px;user-select:none">' +
       '自定义隐藏规则(小白教程)：<br>' +
@@ -460,6 +494,11 @@
       saveSettings(currentSettings);
       applyStyles();
       armPanelAutoClose(box);
+    });
+
+    box.querySelector('#huya-clean-changelog-btn').addEventListener('click', function () {
+      showChangelog();
+      armPanelAutoClose(box); // 弹层期间重新计时，面板不抢先收起
     });
 
     var customTextarea = box.querySelector('#huya-clean-custom-rules');
