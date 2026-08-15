@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.21
+// @version      0.22
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -101,8 +101,9 @@
     // 播放区宽度自适应：全宽 - 左侧 230 - 聊天区 340 - 间隙 10，底部对齐聊天区底边
     '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:flex-end!important;width:calc(100vw - 580px)!important;margin:0!important;}',
     '.room-player-wrap{flex:0 0 auto!important;}',
-    // 控制条(44px 背景条)钉到播放器底边，与礼物栏、聊天区底边平齐
-    '#player-ctrl-wrap{position:absolute!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;height:44px!important;z-index:21!important;max-width:100%!important;}'
+    // 控制条(44px)定位到礼物栏上方(视频画面底部)：bottom 60px = 礼物栏高度，
+    // 保留虎牙原生 hover 显隐动画，只是把它的位置从礼物栏里挪回视频底缘
+    '#player-ctrl-wrap{position:absolute!important;left:0!important;right:0!important;bottom:60px!important;top:auto!important;height:44px!important;z-index:21!important;max-width:100%!important;}'
   ].join('');
 
   // 背景清除规则：元素自身带背景广告图、但里面装着播放器/正常内容时不能隐藏整块，
@@ -441,6 +442,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.22', text: '控制条(44px)回到礼物栏上方(视频画面底部)，保留原生悬停显隐动画，不再固定到礼物栏上。' },
     { version: '0.21', text: '左侧留 230px(导航栏展开宽度)给导航让位，播放器宽度自适应剩余空间(不重叠聊天区)；控制条钉底与礼物栏、聊天区底边平齐。' },
     { version: '0.19', text: '回到 v0.8 基础重做布局：播放器保持原生大小(画面不拉大)，视频+礼物栏整体底部对齐聊天区底边；聊天区贴紧屏幕右缘；左侧保留图标导航栏。' },
     { version: '0.8', text: '默认隐藏房间头与主播自设组件(matchComponent1/3/6/7、diy-video-embed)，新增布局补偿(隐藏后播放器垂直居中、聊天区拉满，画面不再偏上)；视口锁定保留顶部导航；齿轮恢复旋转(已正放，转起来不显歪)。' },
