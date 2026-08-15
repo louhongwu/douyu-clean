@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.5
+// @version      0.6
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -176,21 +176,32 @@
   function viewportLockCss() {
     return [
       'html.hc-locked,html.hc-locked body{overflow:hidden!important;height:100vh!important;}',
-      // 锁定时隐藏顶部导航与房间头：它们留在文档流中会挡住 fixed 播放器的顶部
-      'html.hc-locked .duya-header-wrap,html.hc-locked #J_roomHeader,html.hc-locked .room-hd-l{display:none!important;}',
-      'html.hc-locked #J_playerMain{position:fixed!important;top:0!important;left:0!important;' +
-        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:100vh!important;z-index:1000!important;}',
-      'html.hc-locked .room-core-r{position:fixed!important;top:0!important;right:0!important;' +
-        'width:var(--hc-aside-w,340px)!important;height:100vh!important;z-index:1000!important;}'
+      // 顶部导航隐藏(留在文档流中会挡 fixed 播放器)；房间头保留并固定到顶部(内含切换直播间入口，不能隐)
+      'html.hc-locked .duya-header-wrap{display:none!important;}',
+      'html.hc-locked #J_roomHeader{position:fixed!important;top:0!important;left:0!important;' +
+        'width:100vw!important;z-index:1001!important;background:inherit!important;}',
+      'html.hc-locked #J_playerMain{position:fixed!important;top:var(--hc-hd-h,78px)!important;left:0!important;' +
+        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:calc(100vh - var(--hc-hd-h,78px))!important;z-index:1000!important;}',
+      'html.hc-locked .room-core-r{position:fixed!important;top:var(--hc-hd-h,78px)!important;right:0!important;' +
+        'width:var(--hc-aside-w,340px)!important;height:calc(100vh - var(--hc-hd-h,78px))!important;z-index:1000!important;}'
     ].join('');
   }
 
   function syncAsideWidthVar() {
     var aside = document.querySelector('.room-core-r');
-    if (!aside) return;
-    var w = Math.round(aside.getBoundingClientRect().width);
-    if (w >= 200 && w <= 700) {
-      try { document.documentElement.style.setProperty('--hc-aside-w', w + 'px'); } catch (e) { /* 忽略 */ }
+    if (aside) {
+      var w = Math.round(aside.getBoundingClientRect().width);
+      if (w >= 200 && w <= 700) {
+        try { document.documentElement.style.setProperty('--hc-aside-w', w + 'px'); } catch (e) { /* 忽略 */ }
+      }
+    }
+    // 房间头高度实时测量：视口锁定时播放器/聊天区排在房间头下方
+    var hd = document.getElementById('J_roomHeader');
+    if (hd) {
+      var h = Math.round(hd.getBoundingClientRect().height);
+      if (h >= 40 && h <= 140) {
+        try { document.documentElement.style.setProperty('--hc-hd-h', h + 'px'); } catch (e) { /* 忽略 */ }
+      }
     }
   }
 
@@ -407,6 +418,8 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.6', text: '视口锁定修正：房间头(#J_roomHeader)不再隐藏，改为固定到视口顶部(内含切换直播间入口)，播放器与聊天区自动排在它下方；仅隐藏顶部导航。' },
+    { version: '0.5', text: '新增「更新说明」版块：⚙ 面板一键查看最近版本更新内容。' },
     { version: '0.4', text: '视口锁定改进：锁定时自动隐藏顶部导航/房间头(挡住 fixed 播放器的三个元素)，播放器与聊天区从视口顶部铺满，纯观看模式，解锁全部恢复。' },
     { version: '0.3', text: '背景广告图只清图不伤内容：#J_mainRoom 等容器的背景推广图改为清背景保留元素(隐藏整个容器会连播放器一起没)；新增隐藏侧栏腾讯广告位组件；自定义规则支持 bg: 前缀(元素带背景广告但里面有正常内容时用)。' },
     { version: '0.2', text: '新增隐藏「主播自设背景推广图」(把播放器顶到一屏以下的大图)；移植斗鱼版双保险：布局兜底(默认开，画面被顶出视口自动回收大块广告) + 视口锁定(实验性，播放器+聊天区钉死视口)。' },
