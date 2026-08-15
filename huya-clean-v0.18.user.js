@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.17
+// @version      0.18
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -105,8 +105,9 @@
     '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;width:calc(100vw - 420px)!important;margin:0 0 0 20px!important;}',
     '.room-player-wrap{flex:1 1 auto!important;height:auto!important;min-height:0!important;}',
     '#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:100%!important;}',
-    // 视频只占播放器上部，底部留 60px 给礼物栏(实测礼物栏父级是 #videoContainer，随其溢出到视口外)
-    '#J_playerMain video{width:100%!important;height:calc(100% - 60px)!important;object-fit:cover!important;}',
+    // 视频区域占播放器上部、底部留 60px 给礼物栏；contain 完整显示不裁切：
+    // 画面保持原生比例不过大，视频内容在区域内居中(上下留深色边)，礼物栏与聊天区底边对齐
+    '#J_playerMain video{width:100%!important;height:calc(100% - 60px)!important;object-fit:contain!important;}',
     // 礼物栏钉到播放器底部(视口内)，层级提到视频之上，图标不再跑到屏幕外
     '#player-gift-wrap{position:absolute!important;left:0!important;right:0!important;bottom:0!important;height:60px!important;z-index:20!important;}',
     // 控制条(礼物栏背景条)钉到底边：实测它 44px 高悬在礼物栏中间，底边比聊天区底高 16px
@@ -463,6 +464,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.18', text: '视频改 object-fit:contain：完整显示不裁切、画面不再被拉大，视频内容居中(上下深色边)，礼物栏与控制条固定贴底和聊天区底边对齐。' },
     { version: '0.17', text: '控制条(#player-ctrl-wrap，礼物栏背景条)钉到播放器底边：修复它 44px 高悬在栏中间、底边比聊天区底高 16px 的对齐问题。' },
     { version: '0.16', text: '最终对齐确认：礼物栏容器底部与聊天区底部完全平齐(图标留 8px 边距为虎牙原生设计)；最强逻辑：以聊天区高度为界，超出聊天区顶部/底部的任何内容一律视为广告自动回收。' },
     { version: '0.15', text: '修复礼物栏图标跑到屏幕外(实测礼物栏父级是 #videoContainer，随播放器拉高溢出)：礼物栏绝对定位钉到播放器底部并提到视频层之上，视频画面自动让出底部 60px。' },
