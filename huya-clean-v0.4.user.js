@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.3
+// @version      0.4
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -176,10 +176,12 @@
   function viewportLockCss() {
     return [
       'html.hc-locked,html.hc-locked body{overflow:hidden!important;height:100vh!important;}',
-      'html.hc-locked #J_playerMain{position:fixed!important;top:60px!important;left:0!important;' +
-        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:calc(100vh - 60px)!important;z-index:1000!important;}',
-      'html.hc-locked .room-core-r{position:fixed!important;top:60px!important;right:0!important;' +
-        'width:var(--hc-aside-w,340px)!important;height:calc(100vh - 60px)!important;z-index:1000!important;}'
+      // 锁定时隐藏顶部导航与房间头：它们留在文档流中会挡住 fixed 播放器的顶部
+      'html.hc-locked .duya-header-wrap,html.hc-locked #J_roomHeader,html.hc-locked .room-hd-l{display:none!important;}',
+      'html.hc-locked #J_playerMain{position:fixed!important;top:0!important;left:0!important;' +
+        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:100vh!important;z-index:1000!important;}',
+      'html.hc-locked .room-core-r{position:fixed!important;top:0!important;right:0!important;' +
+        'width:var(--hc-aside-w,340px)!important;height:100vh!important;z-index:1000!important;}'
     ].join('');
   }
 
