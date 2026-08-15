@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.13
+// @version      0.14
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -79,8 +79,8 @@
     'div.bg-img',
     // 直播间下方热门推荐区块(J_hot，占一屏高度)
     '.hot-wrap',
-    // 分类面包屑条(房间头上方 29px，非核心)，隐藏后房间头直接贴住顶部导航
-    '.match-top',
+    // 分类面包屑条(房间头上方 29px，非核心)与房间头(主播信息条，隐藏后播放器填满聊天区全高)
+    '.match-top, .room-hd-l, #J_roomHeader',
     // 主播自设组件(头条/视频嵌入等)
     '#matchComponent1, #matchComponent3, #matchComponent6, #matchComponent7',
     '.diy-video-embed',
@@ -101,9 +101,8 @@
     '#main_col,#J_mainRoom,.main-room{margin:0!important;padding:0!important;max-width:none!important;}',
     '.room-wrap,.room-core,.match-room{height:calc(100vh - 60px)!important;max-width:none!important;margin:0!important;padding:0!important;}',
     // 播放区：左缘与导航栏保持 20px 间隙，右缘给聊天区(340)与间隙(10)让位；
-    // 宽度收窄(v0.12 的 100vw-350 画面过大)，@1600 约 1180px，接近原生 1105
+    // 房间头已隐藏，播放器 flex 填满整个聊天区高度(顶=聊天区顶，底=聊天区底)
     '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;width:calc(100vw - 420px)!important;margin:0 0 0 20px!important;}',
-    '#J_roomHeader{flex:0 0 auto!important;}',
     '.room-player-wrap{flex:1 1 auto!important;height:auto!important;min-height:0!important;}',
     '#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:100%!important;}',
     '#J_playerMain video{width:100%!important;height:100%!important;object-fit:cover!important;}',
@@ -460,6 +459,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.14', text: '房间头(room-hd-l/J_roomHeader)恢复隐藏，播放器自动填满整个聊天区高度(顶底与聊天区完全对齐)。' },
     { version: '0.13', text: '恢复左侧导航标签栏(50px)不被覆盖；播放器收窄(不再过大)并与导航栏保持间隙；右侧聊天区仍贴屏边；礼物栏占位层提升到视频层之上(修复被视频画面盖住)。' },
     { version: '0.12', text: '拉满两侧空白：主容器留白与左右 padding 清零，播放器区域占满聊天区以外的全部宽度，画面更大。' },
     { version: '0.11', text: '布局兜底升级为「聊天区基准」：以聊天区高度为唯一标尺，超出聊天区顶部/底部的任何大块内容一律自动回收(播放器/聊天区/房间头/导航有白名单保护)，新广告新组件无需再补规则；平时零开销，只有页面出现聊天区外内容时才扫描。' },
