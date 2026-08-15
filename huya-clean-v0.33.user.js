@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.32
+// @version      0.33
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -16,7 +16,7 @@
 
   // ========== 设置存储 ==========
   var SETTINGS_KEY = 'huya-clean-settings';
-  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true, autoReclaim: true, viewportLock: false, autoFull: false };
+  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true, autoReclaim: true, viewportLock: false, autoFull: false, autoQuality: false };
   var CUSTOM_RULES_KEY = 'huya-clean-custom-rules';
   var STYLE_PREFIX = 'huya-clean-';
 
@@ -236,6 +236,130 @@
 
   function stopAutoFullscreen() {
     if (fullscreenTimer) { clearInterval(fullscreenTimer); fullscreenTimer = null; }
+  }
+
+  // ========== 自动最高画质（默认关，⚙ 开关控制） ==========
+  // 档位动态读取 hyPlayerConfig.stream.vMultiStreamInfo(大主播/小主播档位不同)，
+  // 按官方顺序(蓝光30M→蓝光20M→蓝光8M→蓝光4M→超清→流畅)从高到低逐个尝试；
+  // 每档切换后检测「扫码/充值/开通」付费弹窗：出现则隐藏弹窗并换下一档，直到成功。
+  var autoQualityTimer = null;
+  var qualityIndex = 0;
+  var qualityList = [];
+
+  function getQualityList() {
+    try {
+      var vsi = window.hyPlayerConfig && window.hyPlayerConfig.stream && window.hyPlayerConfig.stream.vMultiStreamInfo;
+      if (!vsi) return [];
+      var list = [];
+      for (var k in vsi) {
+        var v = vsi[k];
+        if (v && v.sDisplayName) list.push({ name: String(v.sDisplayName) });
+      }
+      return list; // 键序即官方档位顺序(从高到低)
+    } catch (e) { return []; }
+  }
+
+  function currentQualityName() {
+    var cur = document.querySelector('.player-videotype-cur');
+    return cur ? (cur.textContent || '').trim() : '';
+  }
+
+  function findPayPopup() {
+    var els = document.querySelectorAll('[class*="popup" i],[class*="dialog" i],[class*="modal" i],[class*="pay" i],[class*="guide" i]');
+    for (var i = 0; i < els.length; i++) {
+      var cs = getComputedStyle(els[i]);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      var r = els[i].getBoundingClientRect();
+      if (r.width > 150 && r.height > 80) {
+        var txt = (els[i].textContent || '').slice(0, 300);
+        if (/扫码|二维码|充值|开通|贵族|续费|付费/.test(txt)) return els[i];
+      }
+    }
+    return null;
+  }
+
+  function clickQualityItem(name) {
+    var all = document.querySelectorAll('li,span,div,a');
+    for (var i = 0; i < all.length; i++) {
+      var t = (all[i].textContent || '').trim();
+      if (t === name && all[i].children.length <= 2) {
+        try { all[i].click(); return true; } catch (e) { /* 忽略 */ }
+      }
+    }
+    return false;
+  }
+
+  function openQualityMenu() {
+    var btn = document.querySelector('.player-videotype');
+    if (!btn) return false;
+    try { btn.click(); } catch (e) { return false; }
+    return true;
+  }
+
+  function tryNextQuality() {
+    if (!autoQualityTimer) return;
+    if (qualityIndex >= qualityList.length) {
+      stopAutoQuality();
+      showToast('画质切换完成(已试全部档位)');
+      return;
+    }
+    var name = qualityList[qualityIndex].name;
+    // 已切到目标档则成功；付费弹窗出现则跳过该档
+    if (currentQualityName() === name) {
+      stopAutoQuality();
+      showToast('已切换到最高可用画质：' + name);
+      return;
+    }
+    var popup = findPayPopup();
+    if (popup) {
+      // 付费弹窗：隐藏后换下一档
+      try { popup.style.setProperty('display', 'none', 'important'); } catch (e) { /* 忽略 */ }
+      qualityIndex++;
+      setTimeout(tryNextQuality, 800);
+      return;
+    }
+    // 打开菜单点选目标档位
+    if (openQualityMenu()) {
+      setTimeout(function () {
+        if (!autoQualityTimer) return;
+        if (clickQualityItem(name)) {
+          // 等 1.2 秒检查结果
+          setTimeout(function () {
+            if (!autoQualityTimer) return;
+            if (currentQualityName() === name) {
+              stopAutoQuality();
+              showToast('已切换到最高可用画质：' + name);
+            } else {
+              qualityIndex++;
+              tryNextQuality();
+            }
+          }, 1200);
+        } else {
+          qualityIndex++;
+          tryNextQuality();
+        }
+      }, 500);
+    }
+  }
+
+  function startAutoQuality() {
+    if (autoQualityTimer) return;
+    qualityList = getQualityList();
+    if (!qualityList.length) {
+      showToast('未读取到画质档位，稍后重试', true);
+      return;
+    }
+    qualityIndex = 0;
+    showToast('自动最高画质已开启(' + qualityList.length + ' 档，付费档自动跳过)');
+    tryNextQuality();
+    autoQualityTimer = setInterval(function () {
+      if (qualityIndex >= qualityList.length) { stopAutoQuality(); return; }
+      tryNextQuality();
+    }, 5000);
+  }
+
+  function stopAutoQuality() {
+    if (autoQualityTimer) { clearInterval(autoQualityTimer); autoQualityTimer = null; }
   }
 
   // ========== 视口锁定（实验性，⚙ 开关控制） ==========
@@ -490,6 +614,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.33', text: '新增「自动最高画质」开关(默认关)：档位动态读取(大主播/小主播档位不同)，从高到低逐个尝试切换，检测到扫码/充值付费弹窗自动跳过换下一档。' },
     { version: '0.32', text: '自动全屏改为虎牙播放器自己的全屏(视频画面全屏)：进房自动点击播放器全屏按钮(无浏览器权限限制)，按钮变「退出全屏」即完成，按 Esc/点退出按钮可退出。' },
     { version: '0.31', text: '自动全屏改为浏览器网页全屏(整个页面全屏)：浏览器安全限制要求一次用户手势，开启后进房点击页面任意处(如点播放器开始播放)即自动全屏；退出全屏后不会反复自动进入。' },
     { version: '0.30', text: '新增「自动全屏」开关(默认关)：进房自动进入虎牙剧场模式(网页级宽屏，无浏览器权限拦截；浏览器全屏需用户手势无法自动触发)。' },
@@ -571,6 +696,8 @@
       '<input type="checkbox" data-key="viewportLock"' + (currentSettings.viewportLock ? ' checked' : '') + '>视口锁定(播放器+聊天区钉死视口，实验性)</label>' +
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
       '<input type="checkbox" data-key="autoFull"' + (currentSettings.autoFull ? ' checked' : '') + '>自动全屏(进房自动视频画面全屏)</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
+      '<input type="checkbox" data-key="autoQuality"' + (currentSettings.autoQuality ? ' checked' : '') + '>自动最高画质(付费档自动跳过)</label>' +
       '<div id="huya-clean-changelog-btn" title="查看最近版本更新说明" style="margin-top:4px;padding:3px 8px;text-align:center;cursor:pointer;background:#5a4a1a;color:#ffd;border-radius:6px;user-select:none">更新说明</div>' +
       '<div style="margin-top:6px;border-top:1px solid #333;padding-top:5px">' +
       '<div style="font-size:11px;color:#aaa;line-height:1.7;margin-bottom:4px;max-width:270px;user-select:none">' +
@@ -598,6 +725,9 @@
       if (input.dataset.key === 'autoFull') {
         if (input.checked) startAutoFullscreen();
         else stopAutoFullscreen();
+      } else if (input.dataset.key === 'autoQuality') {
+        if (input.checked) startAutoQuality();
+        else stopAutoQuality();
       }
       armPanelAutoClose(box);
     });
@@ -727,6 +857,7 @@
     try { if (!isRoomPage()) return; } catch (e) { return; }
     try { buildPanel(); } catch (e) { /* 忽略 */ }
     try { if (currentSettings.autoFull) startAutoFullscreen(); } catch (e) { /* 忽略 */ }
+    try { if (currentSettings.autoQuality) startAutoQuality(); } catch (e) { /* 忽略 */ }
   }
 
   // 心跳：面板缺失时重建(SPA 切房后斗鱼式路由重建)，低频兜底
