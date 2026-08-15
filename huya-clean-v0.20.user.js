@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.18
+// @version      0.20
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -79,9 +79,8 @@
     'div.bg-img',
     // 直播间下方热门推荐区块(J_hot，占一屏高度)
     '.hot-wrap',
-    // 分类面包屑条(房间头上方 29px，非核心)与房间头(主播信息条，隐藏后播放器填满聊天区全高)
-    '.match-top, .room-hd-l, #J_roomHeader',
-    // 主播自设组件(头条/视频嵌入等)
+    // 房间头(主播信息条)与主播自设组件(头条/视频嵌入等)，隐藏后由布局补偿规则把播放器居中
+    '.room-hd-l, #J_roomHeader',
     '#matchComponent1, #matchComponent3, #matchComponent6, #matchComponent7',
     '.diy-video-embed',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
@@ -91,29 +90,17 @@
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
 
-  // 布局补偿规则：主区从导航下方开始；房间头保留原高度(与聊天区顶部对齐)，
-  // 播放器 flex 自动填满「房间头到聊天区底部」的剩余高度(播放器内的礼物栏随播放器底边对齐聊天区底部)；
-  // 视频 object-fit:cover 铺满裁剪：无黑边不拉伸，上下边缘裁掉少量画面
+  // 布局补偿规则：主容器占满导航以下空间(左侧保留 50px 图标导航栏)，聊天区贴紧屏幕右缘；
+  // 播放器保持原生大小(画面不拉大)，整体底部对齐：视频+礼物栏的底边与聊天区底边平齐
   var LAYOUT_FIX_RULES = [
-    // 左侧导航标签栏(mod-sidebar 50px)必须保留：#J_mainWrap 恢复原生 50px 左 padding 给它让位；
-    // 顶部 60px 是给顶部导航留的位置，同样保留
-    '#J_mainWrap{margin:0!important;padding:60px 0 0 50px!important;width:100vw!important;max-width:none!important;}',
+    '#J_mainWrap{padding:60px 0 0 50px!important;margin:0!important;width:100vw!important;max-width:none!important;}',
     '#main_col,#J_mainRoom,.main-room{margin:0!important;padding:0!important;max-width:none!important;}',
     '.room-wrap,.room-core,.match-room{height:calc(100vh - 60px)!important;max-width:none!important;margin:0!important;padding:0!important;}',
-    // 播放区：左缘与导航栏保持 20px 间隙，右缘给聊天区(340)与间隙(10)让位；
-    // 房间头已隐藏，播放器 flex 填满整个聊天区高度(顶=聊天区顶，底=聊天区底)
-    '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;width:calc(100vw - 420px)!important;margin:0 0 0 20px!important;}',
-    '.room-player-wrap{flex:1 1 auto!important;height:auto!important;min-height:0!important;}',
-    '#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:100%!important;}',
-    // 视频区域占播放器上部、底部留 60px 给礼物栏；contain 完整显示不裁切：
-    // 画面保持原生比例不过大，视频内容在区域内居中(上下留深色边)，礼物栏与聊天区底边对齐
-    '#J_playerMain video{width:100%!important;height:calc(100% - 60px)!important;object-fit:contain!important;}',
-    // 礼物栏钉到播放器底部(视口内)，层级提到视频之上，图标不再跑到屏幕外
-    '#player-gift-wrap{position:absolute!important;left:0!important;right:0!important;bottom:0!important;height:60px!important;z-index:20!important;}',
-    // 控制条(礼物栏背景条)钉到底边：实测它 44px 高悬在礼物栏中间，底边比聊天区底高 16px
-    '#player-ctrl-wrap{position:absolute!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;height:44px!important;z-index:21!important;max-width:100%!important;}',
-    '.room-player-gift-placeholder{z-index:10!important;}',
-    '.room-core-r{height:100%!important;margin:0!important;}'
+    '.room-core-r{height:100%!important;position:absolute!important;right:0!important;top:0!important;margin:0!important;}',
+    '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:flex-end!important;}',
+    '.room-player-wrap{flex:0 0 auto!important;}',
+    // 控制条(44px 背景条)钉到播放器底边：它悬在礼物栏中间，底边比聊天区底高 16px
+    '#player-ctrl-wrap{position:absolute!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;height:44px!important;z-index:21!important;max-width:100%!important;}'
   ].join('');
 
   // 背景清除规则：元素自身带背景广告图、但里面装着播放器/正常内容时不能隐藏整块，
@@ -141,43 +128,30 @@
   var reclaimFirstTimer = null;
   var reclaimCount = 0;
 
-  // 保护白名单：播放器/聊天区/房间头/导航/助手自身绝不回收
-  function isCoreArea(el) {
-    var n = el;
-    while (n && n !== document.body) {
-      if (n.id === 'J_playerMain' || n.id === 'J_roomHeader' ||
-          n.id === 'huya-clean-fab' || n.id === 'huya-clean-panel') return true;
-      var c = (typeof n.className === 'string') ? n.className : '';
-      if (c.indexOf('room-core-r') >= 0 || c.indexOf('duya-header') >= 0 ||
-          c.indexOf('room-player') >= 0 || c.indexOf('room-hd') >= 0) return true;
-      n = n.parentElement;
-    }
-    return false;
-  }
-
-  // 以聊天区高度为基准：完全位于聊天区上方或下方的大块内容一律视为广告，自动隐藏。
-  // 不管斗鱼式类名怎么变、什么新组件上线，只要超出聊天区范围就被回收。
-  function scanAndHideHogs(aside) {
-    var aR = aside.getBoundingClientRect();
+  function scanAndHideHogs(player) {
+    var pr = player.getBoundingClientRect();
+    var minW = window.innerWidth * 0.5;
     var found = [];
     var walk = function (root, depth) {
       if (depth > 8 || found.length > 20) return;
       var children = root.children;
       for (var i = 0; i < children.length; i++) {
         var el = children[i];
-        if (el === aside || aside.contains(el) || isCoreArea(el)) continue;
+        if (el === player || player.contains(el)) continue;
         var r = el.getBoundingClientRect();
-        var above = r.bottom < aR.top - 2 && r.height > 60;
-        var below = r.top > aR.bottom + 2 && r.height > 60;
-        if ((above || below) && r.width > 200) {
-          var cs = getComputedStyle(el);
-          if (cs.display !== 'none' && cs.visibility !== 'hidden' && cs.position !== 'fixed') {
-            found.push(el);
-            continue; // 命中即回收整块，不再深入
-          }
+        if (r.width < minW || r.height < 300 || r.top >= pr.top || r.bottom <= 0 || r.bottom > pr.top + 1) {
+          // 只有自身宽过半屏/高>=300 的容器才可能包含目标大块，小块不再深入，避免全树强制重排
+          if (depth < 8 && (r.width >= minW || r.height >= 300)) walk(el, depth + 1);
+          continue;
         }
-        // 只有宽>200 或高>60 的容器才可能包含目标块，小块不深入，避免全树强制重排
-        if (depth < 8 && (r.width > 200 || r.height > 60)) walk(el, depth + 1);
+        var cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') continue;
+        var p2 = el.parentElement, isAncestor = false;
+        while (p2 && p2 !== document.body) {
+          if (p2 === player) { isAncestor = true; break; }
+          p2 = p2.parentElement;
+        }
+        if (!isAncestor) found.push(el);
       }
     };
     walk(document.body, 0);
@@ -185,18 +159,19 @@
       try {
         found[j].style.setProperty('display', 'none', 'important');
         reclaimCount++;
-        if (reclaimCount <= 3) showToast('已自动回收聊天区外的广告内容');
+        if (reclaimCount <= 3) showToast('已自动回收遮挡画面的广告容器，无需手动处理');
       } catch (e) { /* 忽略 */ }
     }
   }
 
   function tickReclaim() {
+    // 页面加载中不扫描：getBoundingClientRect 会强制重排，与虎牙首屏渲染抢主线程是卡顿主因
     if (document.readyState !== 'complete') return;
-    // 轻量触发：页面能滚出视口(说明有聊天区外内容)才做全树扫描，平时零开销
-    if (document.documentElement.scrollHeight <= document.documentElement.clientHeight + 50) return;
-    var aside = document.querySelector('.room-core-r');
-    if (!aside) return;
-    scanAndHideHogs(aside);
+    var player = document.getElementById('J_playerMain');
+    if (!player) return;
+    var pr = player.getBoundingClientRect();
+    if (pr.top <= 150) return; // 画面已在视口上部，不打扰
+    scanAndHideHogs(player);
   }
 
   function startLayoutReclaimer() {
@@ -464,16 +439,8 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
-    { version: '0.18', text: '视频改 object-fit:contain：完整显示不裁切、画面不再被拉大，视频内容居中(上下深色边)，礼物栏与控制条固定贴底和聊天区底边对齐。' },
-    { version: '0.17', text: '控制条(#player-ctrl-wrap，礼物栏背景条)钉到播放器底边：修复它 44px 高悬在栏中间、底边比聊天区底高 16px 的对齐问题。' },
-    { version: '0.16', text: '最终对齐确认：礼物栏容器底部与聊天区底部完全平齐(图标留 8px 边距为虎牙原生设计)；最强逻辑：以聊天区高度为界，超出聊天区顶部/底部的任何内容一律视为广告自动回收。' },
-    { version: '0.15', text: '修复礼物栏图标跑到屏幕外(实测礼物栏父级是 #videoContainer，随播放器拉高溢出)：礼物栏绝对定位钉到播放器底部并提到视频层之上，视频画面自动让出底部 60px。' },
-    { version: '0.14', text: '房间头(room-hd-l/J_roomHeader)恢复隐藏，播放器自动填满整个聊天区高度(顶底与聊天区完全对齐)。' },
-    { version: '0.13', text: '恢复左侧导航标签栏(50px)不被覆盖；播放器收窄(不再过大)并与导航栏保持间隙；右侧聊天区仍贴屏边；礼物栏占位层提升到视频层之上(修复被视频画面盖住)。' },
-    { version: '0.12', text: '拉满两侧空白：主容器留白与左右 padding 清零，播放器区域占满聊天区以外的全部宽度，画面更大。' },
-    { version: '0.11', text: '布局兜底升级为「聊天区基准」：以聊天区高度为唯一标尺，超出聊天区顶部/底部的任何大块内容一律自动回收(播放器/聊天区/房间头/导航有白名单保护)，新广告新组件无需再补规则；平时零开销，只有页面出现聊天区外内容时才扫描。' },
-    { version: '0.10', text: '修正布局：恢复房间头(与聊天区顶部对齐，是布局一部分非广告)；播放器改为 flex 自动填满「房间头到聊天区底部」的剩余高度，播放器底边(含礼物栏)与聊天区底部对齐；隐藏分类面包屑条。' },
-    { version: '0.9', text: '播放器与聊天区统一高度：播放器容器拉高到导航以下全高，视频 object-fit:cover 铺满裁剪(无黑边不拉伸，上下边缘裁掉少量画面)。' },
+    { version: '0.20', text: '控制条(44px)钉到播放器底边，与礼物栏、聊天区底边三者完全平齐。' },
+    { version: '0.19', text: '回到 v0.8 基础重做布局：播放器保持原生大小(画面不拉大)，视频+礼物栏整体底部对齐聊天区底边；聊天区贴紧屏幕右缘；左侧保留图标导航栏。' },
     { version: '0.8', text: '默认隐藏房间头与主播自设组件(matchComponent1/3/6/7、diy-video-embed)，新增布局补偿(隐藏后播放器垂直居中、聊天区拉满，画面不再偏上)；视口锁定保留顶部导航；齿轮恢复旋转(已正放，转起来不显歪)。' },
     { version: '0.7', text: '齿轮图标改静止正放(齿正对上下左右，只保留呼吸光晕，不再旋转到斜角度)；新增隐藏直播间下方热门推荐区块 .hot-wrap。' },
     { version: '0.6', text: '视口锁定修正：房间头(#J_roomHeader)不再隐藏，改为固定到视口顶部(内含切换直播间入口)，播放器与聊天区自动排在它下方；仅隐藏顶部导航。' },
