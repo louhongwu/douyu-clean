@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.1
-// @description  ①白名单式去广告：隐藏直播间主播位横幅/侧栏广告/游戏售卖组件；②深色护眼背景(可开关)；③🎯拾取元素：直接点漏掉的广告自动生成隐藏规则，不会写CSS也能去广告；④可拖动齿轮按钮+面板自动收起
+// @version      0.2
+// @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景推广图一键隐藏；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
 // @run-at       document-start
@@ -16,7 +16,7 @@
 
   // ========== 设置存储 ==========
   var SETTINGS_KEY = 'huya-clean-settings';
-  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true };
+  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true, autoReclaim: true, viewportLock: false };
   var CUSTOM_RULES_KEY = 'huya-clean-custom-rules';
   var STYLE_PREFIX = 'huya-clean-';
 
@@ -64,6 +64,8 @@
   // sidebar-banner 是右侧栏广告位；game-sold-comp 是游戏售卖组件；
   // 哈希类名前缀兜底(roomBannerInfo/bannerItem 等)防止虎牙改版失效。
   var AD_RULES = [
+    // 主播自设背景图/头图组件(虎牙「主播头条图」：常为广告推广大图，且把播放器顶到一屏以下)
+    '#matchComponent2, #J_spbg, .diy-toutu2',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
     '#sidebarBanner, .sidebar-banner, .sidebar-banner-link',
     '.game-sold-comp',
@@ -83,6 +85,97 @@
     return black.indexOf(first) < 0;
   }
 
+  // ========== 布局级自动兜底（默认开，⚙ 开关控制） ==========
+  // 与斗鱼版同款思路：不依赖类名。检测到「把播放器顶出视口的大块占位容器」就自动隐藏。
+  // 虎牙主播自设背景图(头条图)常把播放器推到一屏以下，此机制自动回收，未来新广告同理。
+  var reclaimTimer = null;
+  var reclaimFirstTimer = null;
+  var reclaimCount = 0;
+
+  function scanAndHideHogs(player) {
+    var pr = player.getBoundingClientRect();
+    var minW = window.innerWidth * 0.5;
+    var found = [];
+    var walk = function (root, depth) {
+      if (depth > 8 || found.length > 20) return;
+      var children = root.children;
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el === player || player.contains(el)) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width < minW || r.height < 300 || r.top >= pr.top || r.bottom <= 0 || r.bottom > pr.top + 1) {
+          // 只有自身宽过半屏/高>=300 的容器才可能包含目标大块，小块不再深入，避免全树强制重排
+          if (depth < 8 && (r.width >= minW || r.height >= 300)) walk(el, depth + 1);
+          continue;
+        }
+        var cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') continue;
+        var p2 = el.parentElement, isAncestor = false;
+        while (p2 && p2 !== document.body) {
+          if (p2 === player) { isAncestor = true; break; }
+          p2 = p2.parentElement;
+        }
+        if (!isAncestor) found.push(el);
+      }
+    };
+    walk(document.body, 0);
+    for (var j = 0; j < found.length; j++) {
+      try {
+        found[j].style.setProperty('display', 'none', 'important');
+        reclaimCount++;
+        if (reclaimCount <= 3) showToast('已自动回收遮挡画面的广告容器，无需手动处理');
+      } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  function tickReclaim() {
+    // 页面加载中不扫描：getBoundingClientRect 会强制重排，与虎牙首屏渲染抢主线程是卡顿主因
+    if (document.readyState !== 'complete') return;
+    var player = document.getElementById('J_playerMain');
+    if (!player) return;
+    var pr = player.getBoundingClientRect();
+    if (pr.top <= 150) return; // 画面已在视口上部，不打扰
+    scanAndHideHogs(player);
+  }
+
+  function startLayoutReclaimer() {
+    if (reclaimTimer) return;
+    reclaimTimer = setInterval(tickReclaim, 2000);
+    // 首扫延迟 10 秒：等页面加载完成、布局稳定后再做全树扫描，避免进房瞬间卡顿
+    if (reclaimFirstTimer) clearTimeout(reclaimFirstTimer);
+    reclaimFirstTimer = setTimeout(function () {
+      reclaimFirstTimer = null;
+      try { tickReclaim(); } catch (e) { /* 忽略 */ }
+    }, 10000);
+  }
+
+  function stopLayoutReclaimer() {
+    if (reclaimTimer) { clearInterval(reclaimTimer); reclaimTimer = null; }
+    if (reclaimFirstTimer) { clearTimeout(reclaimFirstTimer); reclaimFirstTimer = null; }
+  }
+
+  // ========== 视口锁定（实验性，⚙ 开关控制） ==========
+  // 播放器 + 聊天区 fixed 钉死视口(保留 60px 顶部导航)，页面不可滚动；
+  // 文档流里的任何新广告/背景组件都被裁出视口，从布局上彻底免疫。
+  function viewportLockCss() {
+    return [
+      'html.hc-locked,html.hc-locked body{overflow:hidden!important;height:100vh!important;}',
+      'html.hc-locked #J_playerMain{position:fixed!important;top:60px!important;left:0!important;' +
+        'width:calc(100vw - var(--hc-aside-w,340px))!important;height:calc(100vh - 60px)!important;z-index:1000!important;}',
+      'html.hc-locked .room-core-r{position:fixed!important;top:60px!important;right:0!important;' +
+        'width:var(--hc-aside-w,340px)!important;height:calc(100vh - 60px)!important;z-index:1000!important;}'
+    ].join('');
+  }
+
+  function syncAsideWidthVar() {
+    var aside = document.querySelector('.room-core-r');
+    if (!aside) return;
+    var w = Math.round(aside.getBoundingClientRect().width);
+    if (w >= 200 && w <= 700) {
+      try { document.documentElement.style.setProperty('--hc-aside-w', w + 'px'); } catch (e) { /* 忽略 */ }
+    }
+  }
+
   var currentSettings = loadSettings();
   function applyStyles() {
     if (!isRoomPage()) return;
@@ -90,9 +183,15 @@
     else removeStyle('ad');
     if (currentSettings.darkBg) setStyle('dark', darkStyle());
     else removeStyle('dark');
+    if (currentSettings.viewportLock) setStyle('lock', viewportLockCss());
+    else removeStyle('lock');
+    try { document.documentElement.classList.toggle('hc-locked', currentSettings.viewportLock); } catch (e) { /* 忽略 */ }
     var custom = customRulesCss();
     if (custom) setStyle('custom', custom);
     else removeStyle('custom');
+    if (currentSettings.autoReclaim) startLayoutReclaimer();
+    else stopLayoutReclaimer();
+    syncAsideWidthVar();
   }
   applyStyles();
 
@@ -310,6 +409,10 @@
       '<input type="checkbox" data-key="removeAd"' + (currentSettings.removeAd ? ' checked' : '') + '>去广告</label>' +
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
       '<input type="checkbox" data-key="darkBg"' + (currentSettings.darkBg ? ' checked' : '') + '>深色背景</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
+      '<input type="checkbox" data-key="autoReclaim"' + (currentSettings.autoReclaim ? ' checked' : '') + '>布局兜底(自动回收遮挡画面的大块广告)</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
+      '<input type="checkbox" data-key="viewportLock"' + (currentSettings.viewportLock ? ' checked' : '') + '>视口锁定(播放器+聊天区钉死视口，实验性)</label>' +
       '<div style="margin-top:6px;border-top:1px solid #333;padding-top:5px">' +
       '<div style="font-size:11px;color:#aaa;line-height:1.7;margin-bottom:4px;max-width:270px;user-select:none">' +
       '自定义隐藏规则(小白教程)：<br>' +
@@ -460,6 +563,7 @@
     try {
       if (!isRoomPage()) return;
       if (!document.getElementById(PANEL_ID)) buildPanel();
+      syncAsideWidthVar(); // 聊天区宽度可能随直播间变化，视口锁定按实时宽度排布
     } catch (e) { /* 忽略 */ }
   }, 5000);
 
