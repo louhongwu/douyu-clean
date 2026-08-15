@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.24
+// @version      0.25
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -201,8 +201,10 @@
       // 顶部导航保留(切直播间等入口)，提升层级确保它在 fixed 播放器之上；
       // 房间头已由去广告规则默认隐藏，播放器与聊天区直接排在导航下方铺满
       'html.hc-locked .duya-header-wrap{z-index:1002!important;position:fixed!important;top:0!important;left:0!important;right:0!important;}',
-      'html.hc-locked #J_playerMain{position:fixed!important;top:60px!important;left:230px!important;' +
-        'width:calc(100vw - 230px - var(--hc-aside-w,340px))!important;height:calc(100vh - 60px)!important;z-index:1000!important;}',
+      'html.hc-locked #J_playerMain{position:fixed!important;top:60px!important;left:50px!important;' +
+        'width:calc(100vw - 50px - var(--hc-aside-w,340px))!important;height:calc(100vh - 60px)!important;z-index:1000!important;}',
+      // 锁定态视频 cover 拉大铺满播放器区域(沉浸观看，无黑边)
+      'html.hc-locked #J_playerMain video{width:100%!important;height:100%!important;object-fit:cover!important;}',
       'html.hc-locked .room-core-r{position:fixed!important;top:60px!important;right:0!important;' +
         'width:var(--hc-aside-w,340px)!important;height:calc(100vh - 60px)!important;z-index:1000!important;}'
     ].join('');
@@ -441,6 +443,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.25', text: '视口锁定布局：左侧只留 50px 图标栏，视频 cover 拉大铺满播放器(沉浸无黑边)，播放器顶部与聊天区顶部对齐。' },
     { version: '0.24', text: '视口锁定修正：播放器左缘从 230px 导航栏右侧开始，右缘无间隙贴紧聊天区左缘。' },
     { version: '0.23', text: '控制条恢复完全原生行为：移除所有定位干预，悬停显示/移出自动隐藏的动画恢复正常。' },
     { version: '0.22', text: '控制条(44px)回到礼物栏上方(视频画面底部)，保留原生悬停显隐动画，不再固定到礼物栏上。' },
