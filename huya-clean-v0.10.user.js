@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.9
+// @version      0.10
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -79,8 +79,9 @@
     'div.bg-img',
     // 直播间下方热门推荐区块(J_hot，占一屏高度)
     '.hot-wrap',
-    // 房间头(主播信息条)与主播自设组件(头条/视频嵌入等)，隐藏后由布局补偿规则把播放器居中
-    '.room-hd-l, #J_roomHeader',
+    // 分类面包屑条(房间头上方 29px，非核心)，隐藏后房间头直接贴住顶部导航
+    '.match-top',
+    // 主播自设组件(头条/视频嵌入等)
     '#matchComponent1, #matchComponent3, #matchComponent6, #matchComponent7',
     '.diy-video-embed',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
@@ -90,12 +91,16 @@
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
 
-  // 布局补偿规则：房间头与主播自设组件隐藏后，播放器与聊天区统一高度(导航以下全高)。
-  // 视频用 object-fit:cover 铺满裁剪：无黑边无变形，上下边缘裁掉少量画面换取高度统一
+  // 布局补偿规则：主区从导航下方开始；房间头保留原高度(与聊天区顶部对齐)，
+  // 播放器 flex 自动填满「房间头到聊天区底部」的剩余高度(播放器内的礼物栏随播放器底边对齐聊天区底部)；
+  // 视频 object-fit:cover 铺满裁剪：无黑边不拉伸，上下边缘裁掉少量画面
   var LAYOUT_FIX_RULES = [
+    '#J_mainRoom,.main-room{padding-top:0!important;margin:0!important;}',
     '.main-room,.room-wrap,.room-core{height:calc(100vh - 60px)!important;}',
-    '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:center!important;}',
-    '.room-player-wrap,#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:calc(100vh - 60px)!important;}',
+    '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;}',
+    '#J_roomHeader{flex:0 0 auto!important;}',
+    '.room-player-wrap{flex:1 1 auto!important;height:auto!important;min-height:0!important;}',
+    '#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:100%!important;}',
     '#J_playerMain video{width:100%!important;height:100%!important;object-fit:cover!important;}',
     '.room-core-r{height:100%!important;}'
   ].join('');
@@ -436,6 +441,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.10', text: '修正布局：恢复房间头(与聊天区顶部对齐，是布局一部分非广告)；播放器改为 flex 自动填满「房间头到聊天区底部」的剩余高度，播放器底边(含礼物栏)与聊天区底部对齐；隐藏分类面包屑条。' },
     { version: '0.9', text: '播放器与聊天区统一高度：播放器容器拉高到导航以下全高，视频 object-fit:cover 铺满裁剪(无黑边不拉伸，上下边缘裁掉少量画面)。' },
     { version: '0.8', text: '默认隐藏房间头与主播自设组件(matchComponent1/3/6/7、diy-video-embed)，新增布局补偿(隐藏后播放器垂直居中、聊天区拉满，画面不再偏上)；视口锁定保留顶部导航；齿轮恢复旋转(已正放，转起来不显歪)。' },
     { version: '0.7', text: '齿轮图标改静止正放(齿正对上下左右，只保留呼吸光晕，不再旋转到斜角度)；新增隐藏直播间下方热门推荐区块 .hot-wrap。' },
