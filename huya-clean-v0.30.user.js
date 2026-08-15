@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.29
+// @version      0.30
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -16,7 +16,7 @@
 
   // ========== 设置存储 ==========
   var SETTINGS_KEY = 'huya-clean-settings';
-  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true, autoReclaim: true, viewportLock: false };
+  var DEFAULT_SETTINGS = { removeAd: true, darkBg: true, autoReclaim: true, viewportLock: false, autoFull: false };
   var CUSTOM_RULES_KEY = 'huya-clean-custom-rules';
   var STYLE_PREFIX = 'huya-clean-';
 
@@ -202,6 +202,41 @@
   function stopLayoutReclaimer() {
     if (reclaimTimer) { clearInterval(reclaimTimer); reclaimTimer = null; }
     if (reclaimFirstTimer) { clearTimeout(reclaimFirstTimer); reclaimFirstTimer = null; }
+  }
+
+  // ========== 自动全屏（剧场模式，默认关，⚙ 开关控制） ==========
+  // 虎牙「剧场模式」(#player-fullpage-btn)是网页级宽屏，无浏览器权限拦截，可自动点击；
+  // 浏览器全屏(#player-fullscreen-btn)的 requestFullscreen 需要用户手势，自动点击会被拒绝。
+  var fullscreenTimer = null;
+  var fullscreenRetries = 0;
+
+  function isFullpageActive() {
+    var b = document.getElementById('player-fullpage-right-btn');
+    if (!b) return false;
+    return getComputedStyle(b).display !== 'none';
+  }
+
+  function tryAutoFullscreen() {
+    if (isFullpageActive()) { stopAutoFullscreen(); return; }
+    var btn = document.getElementById('player-fullpage-btn');
+    if (!btn) return;
+    if (btn.getBoundingClientRect().width <= 0) return; // 按钮未显示
+    stopAutoFullscreen();
+    try { btn.click(); } catch (e) { /* 忽略 */ }
+  }
+
+  function startAutoFullscreen() {
+    if (fullscreenTimer) return;
+    fullscreenRetries = 0;
+    fullscreenTimer = setInterval(function () {
+      fullscreenRetries++;
+      if (fullscreenRetries > 40) { stopAutoFullscreen(); return; }
+      tryAutoFullscreen();
+    }, 3000);
+  }
+
+  function stopAutoFullscreen() {
+    if (fullscreenTimer) { clearInterval(fullscreenTimer); fullscreenTimer = null; }
   }
 
   // ========== 视口锁定（实验性，⚙ 开关控制） ==========
@@ -456,6 +491,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.30', text: '新增「自动全屏」开关(默认关)：进房自动进入虎牙剧场模式(网页级宽屏，无浏览器权限拦截；浏览器全屏需用户手势无法自动触发)。' },
     { version: '0.29', text: '锁定视频改为拉伸铺满(不做等比缩放)：画面右边贴聊天区左缘、左边贴 50px 导航边、高度占满播放器区域，无黑边。' },
     { version: '0.28', text: '视口锁定视频改 contain：完整显示不裁切(cover 会把竖屏直播裁得面目全非)，按播放器容器放大但画面始终在聊天区边界内。' },
     { version: '0.27', text: '锁定真正的滚动容器 #main_col(虎牙滚动发生在它内部而非 body)：内容高度超出视口时也滚不动，聊天区外内容全部裁出。' },
@@ -532,6 +568,8 @@
       '<input type="checkbox" data-key="autoReclaim"' + (currentSettings.autoReclaim ? ' checked' : '') + '>布局兜底(自动回收遮挡画面的大块广告)</label>' +
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
       '<input type="checkbox" data-key="viewportLock"' + (currentSettings.viewportLock ? ' checked' : '') + '>视口锁定(播放器+聊天区钉死视口，实验性)</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
+      '<input type="checkbox" data-key="autoFull"' + (currentSettings.autoFull ? ' checked' : '') + '>自动全屏(进房自动开剧场模式)</label>' +
       '<div id="huya-clean-changelog-btn" title="查看最近版本更新说明" style="margin-top:4px;padding:3px 8px;text-align:center;cursor:pointer;background:#5a4a1a;color:#ffd;border-radius:6px;user-select:none">更新说明</div>' +
       '<div style="margin-top:6px;border-top:1px solid #333;padding-top:5px">' +
       '<div style="font-size:11px;color:#aaa;line-height:1.7;margin-bottom:4px;max-width:270px;user-select:none">' +
@@ -556,6 +594,10 @@
       currentSettings[input.dataset.key] = input.checked;
       saveSettings(currentSettings);
       applyStyles();
+      if (input.dataset.key === 'autoFull') {
+        if (input.checked) startAutoFullscreen();
+        else stopAutoFullscreen();
+      }
       armPanelAutoClose(box);
     });
 
@@ -683,6 +725,7 @@
   function initRoom() {
     try { if (!isRoomPage()) return; } catch (e) { return; }
     try { buildPanel(); } catch (e) { /* 忽略 */ }
+    try { if (currentSettings.autoFull) startAutoFullscreen(); } catch (e) { /* 忽略 */ }
   }
 
   // 心跳：面板缺失时重建(SPA 切房后斗鱼式路由重建)，低频兜底
