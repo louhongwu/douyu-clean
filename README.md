@@ -29,7 +29,7 @@
 
 ---
 
-## ✨ 虎牙版功能亮点（huya-clean.user.js）
+## ✨ 虎牙版功能亮点（huya-clean-v0.1.user.js）
 
 1. **去广告**：隐藏直播间主播位横幅（播放器标题栏右侧「点亮进度」等推广）、侧栏广告位、游戏售卖组件，只清广告不动布局。
 2. **🎯 拾取元素**：直接点漏掉的广告自动生成隐藏规则，不会写 CSS 也能去广告（左键=加入规则，Shift+左键=选父级，Esc/右键=结束）。
@@ -63,7 +63,7 @@
 
 ### 第 3 步：安装脚本（虎牙版，可选）
 
-1. 打开 [虎牙版脚本 raw 链接](https://raw.githubusercontent.com/louhongwu/douyu-clean/main/huya-clean.user.js)；
+1. 打开 [虎牙版脚本 raw 链接](https://raw.githubusercontent.com/louhongwu/douyu-clean/main/huya-clean-v0.1.user.js)；
 2. Tampermonkey 弹出安装页后点 **「安装」**。
 
 ### 第 4 步：验证是否成功
