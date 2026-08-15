@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.8
+// @version      0.9
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -90,12 +90,13 @@
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
 
-  // 布局补偿规则：房间头与主播自设组件隐藏后，播放器在「顶部导航以下」的可用空间内垂直居中，
-  // 聊天区拉满剩余高度，避免画面偏上、四周留白
+  // 布局补偿规则：房间头与主播自设组件隐藏后，播放器与聊天区统一高度(导航以下全高)。
+  // 视频用 object-fit:cover 铺满裁剪：无黑边无变形，上下边缘裁掉少量画面换取高度统一
   var LAYOUT_FIX_RULES = [
     '.main-room,.room-wrap,.room-core{height:calc(100vh - 60px)!important;}',
     '.room-core-l{height:100%!important;display:flex!important;flex-direction:column!important;justify-content:center!important;}',
-    '.room-player-wrap{flex:0 0 auto!important;}',
+    '.room-player-wrap,#J_playerMain,#J_playerMain .player-wrap,#J_playerMain .player-video{height:calc(100vh - 60px)!important;}',
+    '#J_playerMain video{width:100%!important;height:100%!important;object-fit:cover!important;}',
     '.room-core-r{height:100%!important;}'
   ].join('');
 
@@ -435,6 +436,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.9', text: '播放器与聊天区统一高度：播放器容器拉高到导航以下全高，视频 object-fit:cover 铺满裁剪(无黑边不拉伸，上下边缘裁掉少量画面)。' },
     { version: '0.8', text: '默认隐藏房间头与主播自设组件(matchComponent1/3/6/7、diy-video-embed)，新增布局补偿(隐藏后播放器垂直居中、聊天区拉满，画面不再偏上)；视口锁定保留顶部导航；齿轮恢复旋转(已正放，转起来不显歪)。' },
     { version: '0.7', text: '齿轮图标改静止正放(齿正对上下左右，只保留呼吸光晕，不再旋转到斜角度)；新增隐藏直播间下方热门推荐区块 .hot-wrap。' },
     { version: '0.6', text: '视口锁定修正：房间头(#J_roomHeader)不再隐藏，改为固定到视口顶部(内含切换直播间入口)，播放器与聊天区自动排在它下方；仅隐藏顶部导航。' },
