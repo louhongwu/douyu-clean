@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         斗鱼去广告 + 自动网页全屏 (性能优化版)
 // @namespace    douyu-adblock
-// @version      13.24
+// @version      13.25
 // @description  ①纯净直播：白名单式去广告，只留主画面+弹幕栏，广告一网打尽；②深色护眼背景，夜间看播不刺眼；③真实数据面板：活跃/弹幕/礼物/贵宾/粉丝一眼看全，旧房间号自动识别；④自动网页全屏(可开关)，进房即享大屏；⑤可拖动齿轮按钮+设置面板自动收起，清爽不挡画面
 // @author       LH
 // @match        https://www.douyu.com/*
@@ -378,7 +378,10 @@
     }
   }
 
+  var reclaimFirstTimer = null;
   function tickReclaim() {
+    // 页面加载中不扫描：getBoundingClientRect 会强制重排，与斗鱼首屏渲染抢主线程是进房卡顿主因之一
+    if (document.readyState !== 'complete') return;
     var player = document.getElementById('js-player-main');
     if (!player) return;
     var pr = player.getBoundingClientRect();
@@ -389,11 +392,17 @@
   function startLayoutReclaimer() {
     if (reclaimTimer) return;
     reclaimTimer = setInterval(tickReclaim, 2000);
-    try { tickReclaim(); } catch (e) { /* 忽略 */ }
+    // 首扫延迟 10 秒：等页面加载完成、布局稳定后再做全树扫描，避免进房瞬间强制重排卡顿
+    if (reclaimFirstTimer) clearTimeout(reclaimFirstTimer);
+    reclaimFirstTimer = setTimeout(function () {
+      reclaimFirstTimer = null;
+      try { tickReclaim(); } catch (e) { /* 忽略 */ }
+    }, 10000);
   }
 
   function stopLayoutReclaimer() {
     if (reclaimTimer) { clearInterval(reclaimTimer); reclaimTimer = null; }
+    if (reclaimFirstTimer) { clearTimeout(reclaimFirstTimer); reclaimFirstTimer = null; }
   }
 
   function applyStyles() {
@@ -426,6 +435,8 @@
   // 只处理新增节点 + 60 秒后断开：弹幕/礼物高频改 DOM，全量轮询会长期空转
   var emptyKillerObserver = null;
   var emptyKillerTimer = null;
+  var emptyKillerDelayTimer = null;
+  var emptyKillerDebounce = null;
   function startEmptyContainerKiller() {
     function isBcEmpty(el) {
       return /^bc/.test(el.id) && !el.firstElementChild && !el.textContent.trim();
@@ -438,25 +449,27 @@
         if (isBcEmpty(el)) hideNode(el);
       });
     }
+    function flushDebounce() {
+      emptyKillerDebounce = null;
+      scanAll();
+    }
 
     if (!emptyKillerObserver) {
-      emptyKillerObserver = new MutationObserver(function (mutations) {
-        mutations.forEach(function (m) {
-          m.addedNodes.forEach(function (n) {
-            if (n.nodeType !== 1) return;
-            if (isBcEmpty(n)) hideNode(n);
-            if (n.querySelectorAll) {
-              n.querySelectorAll('[id^="bc"]').forEach(function (el) {
-                if (isBcEmpty(el)) hideNode(el);
-              });
-            }
-          });
-        });
+      // 回调节流 300ms：斗鱼弹幕/礼物高频改 DOM，合并成低频全量扫描；
+      // 不再对每个新增节点做子树查询(进房 React 渲染海量节点时那是主线程阻塞大户)
+      emptyKillerObserver = new MutationObserver(function () {
+        if (emptyKillerDebounce) return;
+        emptyKillerDebounce = setTimeout(flushDebounce, 300);
       });
     }
-    try { emptyKillerObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* 忽略 */ }
-    scanAll(); // 启动先扫存量
-    // 60 秒高频观察后降频为每 60 秒全量扫描：长期稳定去广告，同时避免高频回调空转
+    if (emptyKillerDelayTimer) clearTimeout(emptyKillerDelayTimer);
+    // 延迟 6 秒 observe：避开 React 首屏渲染窗口(0-6 秒)，空容器先由下方 scanAll 存量扫描兜底
+    emptyKillerDelayTimer = setTimeout(function () {
+      emptyKillerDelayTimer = null;
+      try { emptyKillerObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* 忽略 */ }
+    }, 6000);
+    scanAll(); // 启动先扫存量(单次全量查询，进房瞬间一次可接受)
+    // 60 秒后断开观察降频为每 60 秒全量扫描：长期稳定去广告，同时避免高频回调空转
     if (emptyKillerTimer) clearInterval(emptyKillerTimer);
     emptyKillerTimer = setInterval(function () {
       try { emptyKillerObserver.disconnect(); } catch (e) { /* 忽略 */ }
@@ -467,6 +480,8 @@
   function stopEmptyContainerKiller() {
     if (emptyKillerObserver) { try { emptyKillerObserver.disconnect(); } catch (e) { /* 忽略 */ } }
     if (emptyKillerTimer) { clearInterval(emptyKillerTimer); emptyKillerTimer = null; }
+    if (emptyKillerDelayTimer) { clearTimeout(emptyKillerDelayTimer); emptyKillerDelayTimer = null; }
+    if (emptyKillerDebounce) { clearTimeout(emptyKillerDebounce); emptyKillerDebounce = null; }
   }
 
   // ========== 自动网页全屏 ==========
@@ -1240,6 +1255,7 @@
   // 收藏弹窗搜索框：弹窗出现后自动在标题栏注入搜索框，按文本过滤收藏项
   // 用 MutationObserver 监听弹窗出现（替代 1.5 秒轮询）；注入幂等：已有输入框则跳过
   var collectSearchObserver = null;
+  var collectSearchDebounce = null;
   function injectCollectSearch() {
     var title = document.querySelector('.ChatBarrageCollectPop-title');
     if (!title || document.getElementById('dc-collect-search')) return;
@@ -1266,8 +1282,14 @@
   function startCollectSearch() {
     if (collectSearchObserver) return;
     try {
+      // debounce 500ms：进房 React 海量渲染会高频触发 body 级 observer，
+      // 合并成低频检查，避免每次 DOM 变化都同步全文档 querySelector(进房卡顿主因之一)
       collectSearchObserver = new MutationObserver(function () {
-        try { injectCollectSearch(); } catch (e) { /* 弹窗未出现时忽略 */ }
+        if (collectSearchDebounce) return;
+        collectSearchDebounce = setTimeout(function () {
+          collectSearchDebounce = null;
+          try { injectCollectSearch(); } catch (e) { /* 弹窗未出现时忽略 */ }
+        }, 500);
       });
       collectSearchObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { /* 观察失败：忽略 */ }
@@ -1694,6 +1716,7 @@
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   // 与 GreasyFork 发布说明保持同步，只保留近期主要版本
   var CHANGELOG = [
+    { version: '13.25', text: '进房卡顿优化：空容器回收延迟 6 秒启动并把观察回调节流合并(不再逐节点子树查询)；收藏搜索观察器 500ms 防抖(不再每次 DOM 变化都全文档查询)；布局兜底首扫延迟 10 秒且页面加载中不扫描——三处同步主线程阻塞点全部让出首屏渲染窗口，打开直播间不再卡一下。' },
     { version: '13.24', text: '修复部分直播间数据全为 --：斗鱼标题第一段是直播间标题而非主播名，主播改标题后真实房号解析失效；昵称改从标题尾段/第二段提取，suggest 结果按精确/包含匹配；数据接口 200 但内容异常也快速重试；贵宾通道改用 TextDecoder 并防新旧连接竞态；面板窄窗不溢出；弹幕/礼物缺失即触发房号解析；多项性能与健壮性优化。' },
     { version: '13.23', text: '新增「拾取元素」：自定义规则区点「🎯 拾取元素」后，直接点漏掉的广告即可自动生成选择器并立即隐藏(左键=加入规则，Shift+左键=选父级，Esc/右键=结束)，不会写 CSS 也能自定义去广告。' },
     { version: '13.22', text: '抗改版双保险：①布局级自动兜底(默认开)：不再依赖类名，自动回收把画面顶出视口的大块广告容器，斗鱼以后出新广告也能自动处理；②视口锁定(实验性，开关控制)：播放器+弹幕栏钉死视口、页面不可滚动，从布局上彻底免疫新增广告；两者均可随时在 ⚙ 面板开关。' },
@@ -1973,7 +1996,7 @@
 
   // ========== 启动 ==========
   // 调试接口：页面控制台执行 JSON.stringify(unsafeWindow.__douyuClean) 可查看运行状态与错误
-  var SCRIPT_VERSION = '13.24';
+  var SCRIPT_VERSION = '13.25';
   var debugState = { version: SCRIPT_VERSION, settings: currentSettings, errors: [], heartbeat: 0 };
   try { unsafeWindow.__douyuClean = debugState; } catch (e) { /* 无 unsafeWindow 时忽略 */ }
   try { console.log('[斗鱼纯净助手] v' + SCRIPT_VERSION + ' 启动', location.href); } catch (e) { /* 忽略 */ }
