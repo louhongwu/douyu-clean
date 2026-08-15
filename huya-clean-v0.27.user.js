@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.26
+// @version      0.27
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -93,8 +93,10 @@
   // 布局补偿规则：主容器占满导航以下空间(左侧保留 50px 图标导航栏)，聊天区贴紧屏幕右缘；
   // 播放器保持原生大小(画面不拉大)，整体底部对齐：视频+礼物栏的底边与聊天区底边平齐
   var LAYOUT_FIX_RULES = [
-    // 页面高度锁定为视口、不可滚动：聊天区高度以外的一切内容都被裁出视口(最强原则)
+    // 页面高度锁定为视口、不可滚动：聊天区高度以外的一切内容都被裁出视口(最强原则)。
+    // 实测虎牙的滚动发生在 #main_col(overflowY:auto，内容 1064 > 视口 944)，必须锁它而不是只锁 body
     'html,body{height:100vh!important;overflow:hidden!important;}',
+    '#main_col{overflow:hidden!important;height:calc(100vh - 60px)!important;}',
     // 左侧留 230px 给导航栏(展开态宽度：50 图标栏 + 180 频道列表)
     '#J_mainWrap{padding:60px 0 0 230px!important;margin:0!important;width:100vw!important;max-width:none!important;}',
     '#main_col,#J_mainRoom,.main-room{margin:0!important;padding:0!important;max-width:none!important;}',
@@ -453,6 +455,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.27', text: '锁定真正的滚动容器 #main_col(虎牙滚动发生在它内部而非 body)：内容高度超出视口时也滚不动，聊天区外内容全部裁出。' },
     { version: '0.26', text: '布局兜底修复：旧触发条件(滚动高度)在虎牙 overflow:hidden 下永不生效，改为 5 秒定时直扫；回收条件放宽(高>40/宽>150)；页面默认锁定视口高度不可滚动——聊天区高度以外的一切内容全部裁出，无滚动条。' },
     { version: '0.25', text: '视口锁定布局：左侧只留 50px 图标栏，视频 cover 拉大铺满播放器(沉浸无黑边)，播放器顶部与聊天区顶部对齐。' },
     { version: '0.24', text: '视口锁定修正：播放器左缘从 230px 导航栏右侧开始，右缘无间隙贴紧聊天区左缘。' },
