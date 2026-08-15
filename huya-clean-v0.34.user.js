@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.33
+// @version      0.34
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -90,7 +90,7 @@
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
 
-  // 布局补偿规则：主容器占满导航以下空间(左侧保留 50px 图标导航栏)，聊天区贴紧屏幕右缘；
+  // 布局补偿规则：主容器占满导航以下空间(左侧保留 230px 导航栏展开位)，聊天区贴紧屏幕右缘；
   // 播放器保持原生大小(画面不拉大)，整体底部对齐：视频+礼物栏的底边与聊天区底边平齐
   var LAYOUT_FIX_RULES = [
     // 页面高度锁定为视口、不可滚动：聊天区高度以外的一切内容都被裁出视口(最强原则)。
@@ -178,6 +178,7 @@
         if (reclaimCount <= 3) showToast('已自动回收聊天区外的广告内容');
       } catch (e) { /* 忽略 */ }
     }
+    return found.length;
   }
 
   function tickReclaim() {
@@ -191,12 +192,12 @@
   function startLayoutReclaimer() {
     if (reclaimTimer) return;
     reclaimTimer = setInterval(tickReclaim, 5000);
-    // 首扫延迟 10 秒：等页面加载完成、布局稳定后再做全树扫描，避免进房瞬间卡顿
+    // 首扫延迟 3 秒：等页面首屏渲染完成即扫描，聊天区外广告快速回收
     if (reclaimFirstTimer) clearTimeout(reclaimFirstTimer);
     reclaimFirstTimer = setTimeout(function () {
       reclaimFirstTimer = null;
       try { tickReclaim(); } catch (e) { /* 忽略 */ }
-    }, 10000);
+    }, 3000);
   }
 
   function stopLayoutReclaimer() {
@@ -279,7 +280,9 @@
   }
 
   function clickQualityItem(name) {
-    var all = document.querySelectorAll('li,span,div,a');
+    // 只在播放器容器内找菜单项，避免误点弹幕/聊天区里的同名文本
+    var root = document.getElementById('J_playerMain') || document;
+    var all = root.querySelectorAll('li,span,div,a');
     for (var i = 0; i < all.length; i++) {
       var t = (all[i].textContent || '').trim();
       if (t === name && all[i].children.length <= 2) {
@@ -296,16 +299,20 @@
     return true;
   }
 
+  var qualityBusy = false; // 防重入：interval 与 setTimeout 链同时跑会互相干扰
+
   function tryNextQuality() {
-    if (!autoQualityTimer) return;
+    if (!autoQualityTimer || qualityBusy) return;
     if (qualityIndex >= qualityList.length) {
       stopAutoQuality();
       showToast('画质切换完成(已试全部档位)');
       return;
     }
+    qualityBusy = true;
     var name = qualityList[qualityIndex].name;
     // 已切到目标档则成功；付费弹窗出现则跳过该档
     if (currentQualityName() === name) {
+      qualityBusy = false;
       stopAutoQuality();
       showToast('已切换到最高可用画质：' + name);
       return;
@@ -315,47 +322,55 @@
       // 付费弹窗：隐藏后换下一档
       try { popup.style.setProperty('display', 'none', 'important'); } catch (e) { /* 忽略 */ }
       qualityIndex++;
+      qualityBusy = false;
       setTimeout(tryNextQuality, 800);
       return;
     }
     // 打开菜单点选目标档位
     if (openQualityMenu()) {
       setTimeout(function () {
-        if (!autoQualityTimer) return;
+        if (!autoQualityTimer) { qualityBusy = false; return; }
         if (clickQualityItem(name)) {
           // 等 1.2 秒检查结果
           setTimeout(function () {
-            if (!autoQualityTimer) return;
+            if (!autoQualityTimer) { qualityBusy = false; return; }
             if (currentQualityName() === name) {
+              qualityBusy = false;
               stopAutoQuality();
               showToast('已切换到最高可用画质：' + name);
             } else {
               qualityIndex++;
+              qualityBusy = false;
               tryNextQuality();
             }
           }, 1200);
         } else {
           qualityIndex++;
+          qualityBusy = false;
           tryNextQuality();
         }
       }, 500);
+    } else {
+      qualityBusy = false;
     }
   }
 
   function startAutoQuality() {
-    if (autoQualityTimer) return;
+    if (autoQualityTimer) return true;
     qualityList = getQualityList();
     if (!qualityList.length) {
-      showToast('未读取到画质档位，稍后重试', true);
-      return;
+      showToast('未读取到画质档位(播放器未就绪)，稍后重试', true);
+      return false;
     }
     qualityIndex = 0;
+    qualityBusy = false;
     showToast('自动最高画质已开启(' + qualityList.length + ' 档，付费档自动跳过)');
-    tryNextQuality();
     autoQualityTimer = setInterval(function () {
       if (qualityIndex >= qualityList.length) { stopAutoQuality(); return; }
       tryNextQuality();
     }, 5000);
+    tryNextQuality(); // 先建 timer 再首调：tryNextQuality 依赖 autoQualityTimer 非空
+    return true;
   }
 
   function stopAutoQuality() {
@@ -466,7 +481,7 @@
       while (n && n !== document.body) {
         if (n.id === 'J_playerMain' || n.id === 'huya-clean-panel' || n.id === 'huya-clean-fab') return true;
         var c = (typeof n.className === 'string') ? n.className : '';
-        if (c.indexOf('room-core-r') >= 0 || c.indexOf('room-sidebar') >= 0 || c.indexOf('danmuwrap') >= 0) return true;
+        if (c.indexOf('room-core-r') >= 0 || c.indexOf('room-sidebar') >= 0 || c.indexOf('danmuwrap') >= 0 || c.indexOf('mod-sidebar') >= 0 || c.indexOf('duya-header') >= 0) return true;
         n = n.parentElement;
       }
       return false;
@@ -614,6 +629,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.34', text: '审查修复：自动最高画质首次切换不执行(timer 建前调用)、尝试流程防重入、无档位时开关自动回弹、菜单项限定播放器容器搜索(防误点弹幕文本)、拾取器加导航栏保护、扫描器布局稳定时跳过全树重排。' },
     { version: '0.33', text: '新增「自动最高画质」开关(默认关)：档位动态读取(大主播/小主播档位不同)，从高到低逐个尝试切换，检测到扫码/充值付费弹窗自动跳过换下一档。' },
     { version: '0.32', text: '自动全屏改为虎牙播放器自己的全屏(视频画面全屏)：进房自动点击播放器全屏按钮(无浏览器权限限制)，按钮变「退出全屏」即完成，按 Esc/点退出按钮可退出。' },
     { version: '0.31', text: '自动全屏改为浏览器网页全屏(整个页面全屏)：浏览器安全限制要求一次用户手势，开启后进房点击页面任意处(如点播放器开始播放)即自动全屏；退出全屏后不会反复自动进入。' },
@@ -726,8 +742,14 @@
         if (input.checked) startAutoFullscreen();
         else stopAutoFullscreen();
       } else if (input.dataset.key === 'autoQuality') {
-        if (input.checked) startAutoQuality();
-        else stopAutoQuality();
+        if (input.checked && !startAutoQuality()) {
+          // 播放器未就绪读不到档位：回弹开关，避免开了不工作
+          input.checked = false;
+          currentSettings.autoQuality = false;
+          saveSettings(currentSettings);
+        } else if (!input.checked) {
+          stopAutoQuality();
+        }
       }
       armPanelAutoClose(box);
     });
