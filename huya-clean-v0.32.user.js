@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.31
+// @version      0.32
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -204,38 +204,38 @@
     if (reclaimFirstTimer) { clearTimeout(reclaimFirstTimer); reclaimFirstTimer = null; }
   }
 
-  // ========== 自动全屏（浏览器网页全屏，默认关，⚙ 开关控制） ==========
-  // 浏览器全屏 requestFullscreen 必须发生在用户手势(点击/按键)中，无法全自动触发；
-  // 实现：开关开启后，监听页面第一次点击(如点播放器开始播放)——点击瞬间自动进入全屏。
-  var fullscreenClickHandler = null;
+  // ========== 自动全屏（虎牙播放器全屏：视频画面全屏，默认关，⚙ 开关控制） ==========
+  // 点击虎牙播放器自己的全屏按钮(#player-fullscreen-btn)：视频画面铺满播放器区域，
+  // 按钮 title 变「退出全屏」/class 变 narrowscreen。虎牙自己的全屏模式，无浏览器权限限制，可自动点击。
+  var fullscreenTimer = null;
+  var fullscreenRetries = 0;
 
-  function requestWebFullscreen() {
-    if (document.fullscreenElement) return;
-    var el = document.documentElement;
-    try {
-      if (el.requestFullscreen) el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      else if (el.msRequestFullscreen) el.msRequestFullscreen();
-    } catch (e) { /* 浏览器拒绝(无手势等)时忽略 */ }
+  function isPlayerFullscreen() {
+    var b = document.getElementById('player-fullscreen-btn');
+    if (!b) return false;
+    return b.getAttribute('title') === '退出全屏' || b.className.indexOf('narrowscreen') >= 0;
+  }
+
+  function tryAutoFullscreen() {
+    if (isPlayerFullscreen()) { stopAutoFullscreen(); return; }
+    var btn = document.getElementById('player-fullscreen-btn');
+    if (!btn) return;
+    stopAutoFullscreen();
+    try { btn.click(); } catch (e) { /* 忽略 */ }
   }
 
   function startAutoFullscreen() {
-    if (fullscreenClickHandler) return;
-    // 用捕获阶段监听：用户的任意一次点击都是合法手势
-    fullscreenClickHandler = function (e) {
-      try { requestWebFullscreen(); } catch (err) { /* 忽略 */ }
-      // 一次点击即全屏，之后不再监听(退出全屏后也不会自动再进，避免打扰)
-      stopAutoFullscreen();
-    };
-    document.addEventListener('click', fullscreenClickHandler, true);
-    showToast('自动全屏已开启：点击页面任意处即进入全屏(浏览器要求一次点击)');
+    if (fullscreenTimer) return;
+    fullscreenRetries = 0;
+    fullscreenTimer = setInterval(function () {
+      fullscreenRetries++;
+      if (fullscreenRetries > 40) { stopAutoFullscreen(); return; }
+      tryAutoFullscreen();
+    }, 3000);
   }
 
   function stopAutoFullscreen() {
-    if (fullscreenClickHandler) {
-      document.removeEventListener('click', fullscreenClickHandler, true);
-      fullscreenClickHandler = null;
-    }
+    if (fullscreenTimer) { clearInterval(fullscreenTimer); fullscreenTimer = null; }
   }
 
   // ========== 视口锁定（实验性，⚙ 开关控制） ==========
@@ -490,6 +490,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.32', text: '自动全屏改为虎牙播放器自己的全屏(视频画面全屏)：进房自动点击播放器全屏按钮(无浏览器权限限制)，按钮变「退出全屏」即完成，按 Esc/点退出按钮可退出。' },
     { version: '0.31', text: '自动全屏改为浏览器网页全屏(整个页面全屏)：浏览器安全限制要求一次用户手势，开启后进房点击页面任意处(如点播放器开始播放)即自动全屏；退出全屏后不会反复自动进入。' },
     { version: '0.30', text: '新增「自动全屏」开关(默认关)：进房自动进入虎牙剧场模式(网页级宽屏，无浏览器权限拦截；浏览器全屏需用户手势无法自动触发)。' },
     { version: '0.29', text: '锁定视频改为拉伸铺满(不做等比缩放)：画面右边贴聊天区左缘、左边贴 50px 导航边、高度占满播放器区域，无黑边。' },
@@ -569,7 +570,7 @@
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
       '<input type="checkbox" data-key="viewportLock"' + (currentSettings.viewportLock ? ' checked' : '') + '>视口锁定(播放器+聊天区钉死视口，实验性)</label>' +
       '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">' +
-      '<input type="checkbox" data-key="autoFull"' + (currentSettings.autoFull ? ' checked' : '') + '>自动网页全屏(进房后点击页面一次即进入)</label>' +
+      '<input type="checkbox" data-key="autoFull"' + (currentSettings.autoFull ? ' checked' : '') + '>自动全屏(进房自动视频画面全屏)</label>' +
       '<div id="huya-clean-changelog-btn" title="查看最近版本更新说明" style="margin-top:4px;padding:3px 8px;text-align:center;cursor:pointer;background:#5a4a1a;color:#ffd;border-radius:6px;user-select:none">更新说明</div>' +
       '<div style="margin-top:6px;border-top:1px solid #333;padding-top:5px">' +
       '<div style="font-size:11px;color:#aaa;line-height:1.7;margin-bottom:4px;max-width:270px;user-select:none">' +
