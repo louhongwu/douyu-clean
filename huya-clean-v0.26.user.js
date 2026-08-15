@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.25
+// @version      0.26
 // @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
@@ -93,6 +93,8 @@
   // 布局补偿规则：主容器占满导航以下空间(左侧保留 50px 图标导航栏)，聊天区贴紧屏幕右缘；
   // 播放器保持原生大小(画面不拉大)，整体底部对齐：视频+礼物栏的底边与聊天区底边平齐
   var LAYOUT_FIX_RULES = [
+    // 页面高度锁定为视口、不可滚动：聊天区高度以外的一切内容都被裁出视口(最强原则)
+    'html,body{height:100vh!important;overflow:hidden!important;}',
     // 左侧留 230px 给导航栏(展开态宽度：50 图标栏 + 180 频道列表)
     '#J_mainWrap{padding:60px 0 0 230px!important;margin:0!important;width:100vw!important;max-width:none!important;}',
     '#main_col,#J_mainRoom,.main-room{margin:0!important;padding:0!important;max-width:none!important;}',
@@ -130,30 +132,40 @@
   var reclaimFirstTimer = null;
   var reclaimCount = 0;
 
-  function scanAndHideHogs(player) {
-    var pr = player.getBoundingClientRect();
-    var minW = window.innerWidth * 0.5;
+  function isCoreArea(el) {
+    var n = el;
+    while (n && n !== document.body) {
+      if (n.id === 'J_playerMain' || n.id === 'huya-clean-fab' || n.id === 'huya-clean-panel') return true;
+      var c = (typeof n.className === 'string') ? n.className : '';
+      if (c.indexOf('room-core-r') >= 0 || c.indexOf('duya-header') >= 0 ||
+          c.indexOf('room-player') >= 0 || c.indexOf('mod-sidebar') >= 0) return true;
+      n = n.parentElement;
+    }
+    return false;
+  }
+
+  // 最强原则：以聊天区高度为界，超出聊天区顶部/底部的一切大块内容一律视为广告回收
+  function scanAndHideHogs(aside) {
+    var aR = aside.getBoundingClientRect();
     var found = [];
     var walk = function (root, depth) {
-      if (depth > 8 || found.length > 20) return;
+      if (depth > 16 || found.length > 25) return;
       var children = root.children;
       for (var i = 0; i < children.length; i++) {
         var el = children[i];
-        if (el === player || player.contains(el)) continue;
+        if (el === aside || aside.contains(el) || isCoreArea(el)) continue;
         var r = el.getBoundingClientRect();
-        if (r.width < minW || r.height < 300 || r.top >= pr.top || r.bottom <= 0 || r.bottom > pr.top + 1) {
-          // 只有自身宽过半屏/高>=300 的容器才可能包含目标大块，小块不再深入，避免全树强制重排
-          if (depth < 8 && (r.width >= minW || r.height >= 300)) walk(el, depth + 1);
-          continue;
+        var above = r.bottom < aR.top - 2 && r.height > 40;
+        var below = r.top > aR.bottom + 2 && r.height > 40;
+        if ((above || below) && r.width > 150) {
+          var cs = getComputedStyle(el);
+          if (cs.display !== 'none' && cs.visibility !== 'hidden' && cs.position !== 'fixed') {
+            found.push(el);
+            continue; // 命中即回收整块，不再深入
+          }
         }
-        var cs = getComputedStyle(el);
-        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') continue;
-        var p2 = el.parentElement, isAncestor = false;
-        while (p2 && p2 !== document.body) {
-          if (p2 === player) { isAncestor = true; break; }
-          p2 = p2.parentElement;
-        }
-        if (!isAncestor) found.push(el);
+        // 只有宽>150 或高>40 的容器才可能包含目标块，小块不深入，避免全树强制重排
+        if (depth < 16 && (r.width > 150 || r.height > 40)) walk(el, depth + 1);
       }
     };
     walk(document.body, 0);
@@ -161,24 +173,22 @@
       try {
         found[j].style.setProperty('display', 'none', 'important');
         reclaimCount++;
-        if (reclaimCount <= 3) showToast('已自动回收遮挡画面的广告容器，无需手动处理');
+        if (reclaimCount <= 3) showToast('已自动回收聊天区外的广告内容');
       } catch (e) { /* 忽略 */ }
     }
   }
 
   function tickReclaim() {
-    // 页面加载中不扫描：getBoundingClientRect 会强制重排，与虎牙首屏渲染抢主线程是卡顿主因
     if (document.readyState !== 'complete') return;
-    var player = document.getElementById('J_playerMain');
-    if (!player) return;
-    var pr = player.getBoundingClientRect();
-    if (pr.top <= 150) return; // 画面已在视口上部，不打扰
-    scanAndHideHogs(player);
+    // 定时直扫：虎牙页面 overflow:hidden 时 scrollHeight 不增长，不能用滚动高度做触发条件
+    var aside = document.querySelector('.room-core-r');
+    if (!aside) return;
+    scanAndHideHogs(aside);
   }
 
   function startLayoutReclaimer() {
     if (reclaimTimer) return;
-    reclaimTimer = setInterval(tickReclaim, 2000);
+    reclaimTimer = setInterval(tickReclaim, 5000);
     // 首扫延迟 10 秒：等页面加载完成、布局稳定后再做全树扫描，避免进房瞬间卡顿
     if (reclaimFirstTimer) clearTimeout(reclaimFirstTimer);
     reclaimFirstTimer = setTimeout(function () {
@@ -443,6 +453,7 @@
 
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   var CHANGELOG = [
+    { version: '0.26', text: '布局兜底修复：旧触发条件(滚动高度)在虎牙 overflow:hidden 下永不生效，改为 5 秒定时直扫；回收条件放宽(高>40/宽>150)；页面默认锁定视口高度不可滚动——聊天区高度以外的一切内容全部裁出，无滚动条。' },
     { version: '0.25', text: '视口锁定布局：左侧只留 50px 图标栏，视频 cover 拉大铺满播放器(沉浸无黑边)，播放器顶部与聊天区顶部对齐。' },
     { version: '0.24', text: '视口锁定修正：播放器左缘从 230px 导航栏右侧开始，右缘无间隙贴紧聊天区左缘。' },
     { version: '0.23', text: '控制条恢复完全原生行为：移除所有定位干预，悬停显示/移出自动隐藏的动画恢复正常。' },
