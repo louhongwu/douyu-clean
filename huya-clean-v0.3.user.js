@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         虎牙纯净直播 | 去广告·深色·拾取元素
 // @namespace    huya-clean
-// @version      0.2
-// @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景推广图一键隐藏；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
+// @version      0.3
+// @description  ①白名单式去广告：主播位横幅/侧栏广告/游戏售卖组件/主播背景广告图一键清除(只清图不伤直播内容)；②布局兜底(默认开)：画面被顶出视口自动回收大块广告，改版也不怕；③视口锁定(实验性)：播放器+聊天区钉死视口，广告再也推不动画面；④🎯拾取元素：直接点漏掉的广告自动生成规则；⑤深色背景+可拖动齿轮面板
 // @author       LH
 // @match        https://www.huya.com/*
 // @run-at       document-start
@@ -41,8 +41,17 @@
   function customRulesCss() {
     var lines = loadCustomRules().split('\n').map(function (s) { return s.trim(); })
       .filter(function (s) { return s && s.indexOf('{') < 0 && s.indexOf('}') < 0; });
-    if (!lines.length) return '';
-    return lines.join(',') + '{display:none !important;}';
+    var hide = [];
+    var bgClear = [];
+    for (var i = 0; i < lines.length; i++) {
+      // bg: 前缀 = 只清背景图不隐藏元素(元素含正常内容时用，如 bg:#J_mainRoom)
+      if (/^bg:/i.test(lines[i])) bgClear.push(lines[i].slice(3).trim());
+      else hide.push(lines[i]);
+    }
+    var out = '';
+    if (hide.length) out += hide.join(',') + '{display:none !important;}';
+    if (bgClear.length) out += bgClear.join(',') + '{background:none !important;background-image:none !important;}';
+    return out;
   }
   function setStyle(id, cssText) {
     var el = document.getElementById(STYLE_PREFIX + id);
@@ -66,12 +75,19 @@
   var AD_RULES = [
     // 主播自设背景图/头图组件(虎牙「主播头条图」：常为广告推广大图，且把播放器顶到一屏以下)
     '#matchComponent2, #J_spbg, .diy-toutu2',
+    // 侧栏广告位组件(实测背景图为腾讯 pgdt.gtimg.cn 广告系统素材)
+    'div.bg-img',
     '#room-hd-banner, .room-hd-banner, .room-hd-r',
     '#sidebarBanner, .sidebar-banner, .sidebar-banner-link',
     '.game-sold-comp',
     '[class*="roomBannerInfo"], [class*="bannerItem--"], [class*="bannerList--"], [class*="bannerTitle--"]',
     'a[href*="huya.com/gg/"], a[href*="hd.huya.com"]'
   ].join(',') + '{display:none !important;}';
+
+  // 背景清除规则：元素自身带背景广告图、但里面装着播放器/正常内容时不能隐藏整块，
+  // 改为清掉背景图保留内容。实测 #J_mainRoom 的背景图即主播推广广告(zts.msstatic.com)。
+  var BG_CLEAR_RULES = '#J_mainRoom, .main-room, .match-room, .room-wrap' +
+    '{background:none !important;background-image:none !important;}';
 
   function darkStyle() {
     return 'html,body{background:#141416 !important;}';
@@ -179,8 +195,13 @@
   var currentSettings = loadSettings();
   function applyStyles() {
     if (!isRoomPage()) return;
-    if (currentSettings.removeAd) setStyle('ad', AD_RULES);
-    else removeStyle('ad');
+    if (currentSettings.removeAd) {
+      setStyle('ad', AD_RULES);
+      setStyle('bgclear', BG_CLEAR_RULES);
+    } else {
+      removeStyle('ad');
+      removeStyle('bgclear');
+    }
     if (currentSettings.darkBg) setStyle('dark', darkStyle());
     else removeStyle('dark');
     if (currentSettings.viewportLock) setStyle('lock', viewportLockCss());
@@ -421,6 +442,7 @@
       '· 按类名写：<span style="color:#58a6ff">.ad-banner</span>　按ID写：<span style="color:#58a6ff">#gg-xxx</span><br>' +
       '· 模糊匹配(推荐，改版也不怕)：<span style="color:#58a6ff">[class*="advert"]</span><br>' +
       '· 每行写一条，点「应用」立即生效；清空再点「应用」恢复默认。<br>' +
+      '· 元素带背景广告但里面有正常内容？写成 <span style="color:#58a6ff">bg:#J_mainRoom</span> 只清背景图不隐藏。<br>' +
       '</div>' +
       '<textarea id="huya-clean-custom-rules" placeholder="每行一条CSS选择器&#10;如：.abc123 / #xyz / [class*=advert]" style="width:100%;height:52px;resize:none;box-sizing:border-box;background:#222;color:#eee;border:1px solid #444;border-radius:4px;font:11px/1.5 sans-serif;padding:3px 5px;outline:none"></textarea>' +
       '<div style="display:flex;gap:4px;margin-top:3px">' +
