@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         斗鱼去广告 + 自动网页全屏 (性能优化版)
 // @namespace    douyu-adblock
-// @version      13.25
+// @version      13.26
 // @description  ①纯净直播：白名单式去广告，只留主画面+弹幕栏，广告一网打尽；②深色护眼背景，夜间看播不刺眼；③真实数据面板：活跃/弹幕/礼物/贵宾/粉丝一眼看全，旧房间号自动识别；④自动网页全屏(可开关)，进房即享大屏；⑤可拖动齿轮按钮+设置面板自动收起，清爽不挡画面
 // @author       LH
 // @match        https://www.douyu.com/*
@@ -67,7 +67,7 @@
   // 注意：不能隐藏 .layout-Player-asideMainTop —— 运行时它同时包含榜单和弹幕列表！
   var AD_RULES = [
     // ---- 结构性非核心区域（白名单外 = 广告） ----
-    'aside, footer, #js-super-menu, #js-room-top-banner',
+    'aside, footer, header, .Header, .Header-wrap, #js-super-menu, #js-room-top-banner',
     '.wm-general,.wm-general-wrapper,.wm-general-bgblur', // 活动页大横幅容器(含主播推荐)，固定高度会把播放器顶出视口，白名单外一律隐藏
     '#js-player-asideTopSuspension',
     '#js-player-rank, #js-player-rankAll, .ChatRank, .ChatRank-rankWraper, .ChatTabContainer',
@@ -343,7 +343,7 @@
 
   function scanAndHideHogs(player) {
     var pr = player.getBoundingClientRect();
-    var minW = window.innerWidth * 0.5;
+    var minW = window.innerWidth * 0.25; // 宽>=四分之一屏(赛事组件约 1386-1500px @1600 视口)
     var found = [];
     var walk = function (root, depth) {
       if (depth > 8 || found.length > 20) return;
@@ -352,9 +352,9 @@
         var el = children[i];
         if (el === player || player.contains(el)) continue;
         var r = el.getBoundingClientRect();
-        if (r.width < minW || r.height < 300 || r.top >= pr.top || r.bottom <= 0 || r.bottom > pr.top + 1) {
-          // 只有自身宽过半屏/高>=300 的容器才可能包含目标大块，小块不再深入，避免每轮全树强制重排
-          if (depth < 8 && (r.width >= minW || r.height >= 300)) walk(el, depth + 1);
+        if (r.width < minW || r.height < 80 || r.top >= pr.top || r.bottom <= 0 || r.bottom > pr.top + 1) {
+          // 只有自身宽>=25%屏/高>=80 的容器才可能包含目标块，小块不再深入，避免每轮全树强制重排
+          if (depth < 8 && (r.width >= minW || r.height >= 80)) walk(el, depth + 1);
           continue;
         }
         var cs = getComputedStyle(el);
@@ -405,10 +405,19 @@
     if (reclaimFirstTimer) { clearTimeout(reclaimFirstTimer); reclaimFirstTimer = null; }
   }
 
+  // 布局补偿：斗鱼原生 #root margin-top:-60px(为顶部导航留位)，导航隐藏后需清零，
+  // 否则播放器顶部会被顶出视口约 22px(实测 5556 赛事直播间)
+  var LAYOUT_FIX_RULES = '#root{margin-top:0!important;}';
+
   function applyStyles() {
     if (isRoomPage()) {
-      if (currentSettings.removeAd) setStyle('ad', AD_RULES);
-      else removeStyle('ad');
+      if (currentSettings.removeAd) {
+        setStyle('ad', AD_RULES);
+        setStyle('layoutfix', LAYOUT_FIX_RULES);
+      } else {
+        removeStyle('ad');
+        removeStyle('layoutfix');
+      }
       if (currentSettings.darkBg) setStyle('dark', darkStyle());
       else removeStyle('dark');
       if (currentSettings.viewportLock) setStyle('lock', viewportLockCss());
@@ -1716,6 +1725,7 @@
   // ========== 更新说明（⚙ 面板「更新说明」按钮展示） ==========
   // 与 GreasyFork 发布说明保持同步，只保留近期主要版本
   var CHANGELOG = [
+    { version: '13.26', text: '修复赛事直播间(如 5556)上方广告残留：顶部导航 Header 加入白名单清理；布局兜底回收条件放宽(宽>=25%屏、高>=80)，赛事日历/赛程/切换组件等中等高度广告容器自动回收。' },
     { version: '13.25', text: '进房卡顿优化：空容器回收延迟 6 秒启动并把观察回调节流合并(不再逐节点子树查询)；收藏搜索观察器 500ms 防抖(不再每次 DOM 变化都全文档查询)；布局兜底首扫延迟 10 秒且页面加载中不扫描——三处同步主线程阻塞点全部让出首屏渲染窗口，打开直播间不再卡一下。' },
     { version: '13.24', text: '修复部分直播间数据全为 --：斗鱼标题第一段是直播间标题而非主播名，主播改标题后真实房号解析失效；昵称改从标题尾段/第二段提取，suggest 结果按精确/包含匹配；数据接口 200 但内容异常也快速重试；贵宾通道改用 TextDecoder 并防新旧连接竞态；面板窄窗不溢出；弹幕/礼物缺失即触发房号解析；多项性能与健壮性优化。' },
     { version: '13.23', text: '新增「拾取元素」：自定义规则区点「🎯 拾取元素」后，直接点漏掉的广告即可自动生成选择器并立即隐藏(左键=加入规则，Shift+左键=选父级，Esc/右键=结束)，不会写 CSS 也能自定义去广告。' },
@@ -1996,7 +2006,7 @@
 
   // ========== 启动 ==========
   // 调试接口：页面控制台执行 JSON.stringify(unsafeWindow.__douyuClean) 可查看运行状态与错误
-  var SCRIPT_VERSION = '13.25';
+  var SCRIPT_VERSION = '13.26';
   var debugState = { version: SCRIPT_VERSION, settings: currentSettings, errors: [], heartbeat: 0 };
   try { unsafeWindow.__douyuClean = debugState; } catch (e) { /* 无 unsafeWindow 时忽略 */ }
   try { console.log('[斗鱼纯净助手] v' + SCRIPT_VERSION + ' 启动', location.href); } catch (e) { /* 忽略 */ }
